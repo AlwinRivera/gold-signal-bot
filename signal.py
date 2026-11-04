@@ -210,4 +210,14 @@ def main():
         send_daily_summary()
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        import requests as _r
+        err = "\u26a0\ufe0f Bot error: " + str(e)
+        print(err)
+        try:
+            _r.post("https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage",
+                    json={"chat_id": TG_CHAT_ID, "text": err}, timeout=10)
+        except Exception:
+            pass
