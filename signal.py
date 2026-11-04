@@ -190,7 +190,7 @@ def main():
     latest_dt = datetime.strptime(latest, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     age_hours = (now_utc - latest_dt).total_seconds() / 3600
     if age_hours > 2:
-        stale_msg = ("⚠️ *Stale data warning*
+        stale_msg = ("⚠ *Stale data warning*
 "
                      "Latest candle is " + str(round(age_hours, 1)) + "h old
 "
