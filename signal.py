@@ -71,9 +71,9 @@ def calc_ema(closes, period):
         ema[i] = closes[i] * k + ema[i - 1] * (1 - k)
     return ema
 
-def fetch_candles(n=120):
+def fetch_candles(n=120, interval="1h"):
     url = ("https://api.twelvedata.com/time_series"
-           "?symbol=XAU/USD&interval=1h&outputsize=" + str(n) + "&apikey=" + TD_KEY)
+           "?symbol=XAU/USD&interval=" + interval + "&outputsize=" + str(n) + "&apikey=" + TD_KEY)
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     data = r.json()
@@ -82,6 +82,25 @@ def fetch_candles(n=120):
     candles = list(reversed(data["values"]))
     return [{"t": c["datetime"], "o": float(c["open"]), "h": float(c["high"]),
              "l": float(c["low"]), "c": float(c["close"])} for c in candles]
+
+def get_4h_trend():
+    """Returns 'bull', 'bear', or 'neutral' based on 4H 20/50 EMA alignment."""
+    try:
+        candles_4h = fetch_candles(60, interval="4h")
+        closes_4h = [c["c"] for c in candles_4h]
+        e20_4h = calc_ema(closes_4h, 20)
+        e50_4h = calc_ema(closes_4h, 50)
+        idx = len(candles_4h) - 1
+        if e20_4h[idx] is None or e50_4h[idx] is None:
+            return "neutral"
+        if e20_4h[idx] > e50_4h[idx]:
+            return "bull"
+        elif e20_4h[idx] < e50_4h[idx]:
+            return "bear"
+        return "neutral"
+    except Exception as e:
+        print("4H trend fetch failed: " + str(e))
+        return "neutral"  # fail open: don't block signals if 4H data unavailable
 
 def detect_signal(candles, news_events):
     closes = [c["c"] for c in candles]
@@ -97,8 +116,16 @@ def detect_signal(candles, news_events):
     if is_near_news(cur["t"], news_events):
         print("Skipping - news within 30 min of " + cur["t"])
         return None
+    # 4H trend filter: only trade in direction of higher timeframe trend
+    htf_trend = get_4h_trend()
     ev = e20[idx]; e5 = e50[idx]
     bull_trend = ev > e5; bear_trend = ev < e5
+    if htf_trend == "bear" and bull_trend:
+        print("Skipping BUY setup - 4H trend is bearish")
+        return None
+    if htf_trend == "bull" and bear_trend:
+        print("Skipping SELL setup - 4H trend is bullish")
+        return None
     if not bull_trend and not bear_trend:
         return None
     candle_size = cur["h"] - cur["l"]
@@ -120,9 +147,10 @@ def detect_signal(candles, news_events):
     r1 = abs(cur["c"] - sl)
     tp = cur["c"] + r1 * 1.5 if direction == "BUY" else cur["c"] - r1 * 1.5
     trend_label = "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"
+    htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
     return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
             "sl_pips": round(abs(cur["c"] - sl) / 0.01, 1), "ema20": ev,
-            "time": cur["t"], "trend": trend_label}
+            "time": cur["t"], "trend": trend_label, "htf": htf_label}
 
 def send_telegram(text):
     r = requests.post("https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage",
@@ -158,6 +186,7 @@ def log_to_sheet(signal):
             "tp":          signal["tp"],
             "ema20":       signal["ema20"],
             "trend":       signal["trend"],
+            "htf_trend":   signal["htf"],
             "candle_time": signal["time"]
         }
         requests.post(SHEET_URL, json=payload, timeout=10)
