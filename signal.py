@@ -24,6 +24,7 @@ from datetime import datetime, timezone, timedelta
 TD_KEY     = os.environ["TD_KEY"]
 TG_TOKEN   = os.environ["TG_TOKEN"]
 TG_CHAT_ID = os.environ["TG_CHAT_ID"]
+SHEET_URL  = os.environ.get("SHEET_URL", "")
 
 PHT = timezone(timedelta(hours=8))
 ET_  = timezone(timedelta(hours=-5))  # US Eastern (winter); -4 in summer
@@ -160,6 +161,25 @@ def detect_signal(candles, news_events):
             "sl_pips": round(abs(cur["c"] - sl) / 0.01, 1), "ema20": ev,
             "time": cur["t"], "trend": "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"}
 
+def log_to_sheet(signal):
+    if not SHEET_URL:
+        return
+    try:
+        payload = {
+            "timestamp": datetime.now(PHT).strftime("%Y-%m-%d %H:%M PHT"),
+            "direction": signal["direction"],
+            "entry":     signal["entry"],
+            "sl":        signal["sl"],
+            "tp":        signal["tp"],
+            "ema20":     signal["ema20"],
+            "trend":     signal["trend"],
+            "candle_time": signal["time"]
+        }
+        requests.post(SHEET_URL, json=payload, timeout=10)
+        print("📋 Logged to Google Sheet.")
+    except Exception as e:
+        print(f"⚠️ Sheet log failed: {e}")
+
 def send_telegram(signal):
     arrow = "🟢 ▲" if signal["direction"] == "BUY" else "🔴 ▼"
     msg = (
@@ -191,6 +211,7 @@ def main():
     if signal:
         print(f"🎯 Setup found: {signal['direction']} @ {signal['entry']:.2f}")
         send_telegram(signal)
+        log_to_sheet(signal)
     else:
         h = utc_hour(candles[-1]["t"])
         if in_session(h):

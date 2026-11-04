@@ -27,4 +27,5 @@ jobs:
           TD_KEY: ${{ secrets.TD_KEY }}
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          SHEET_URL: ${{ secrets.SHEET_URL }}
         run: python signal.py
