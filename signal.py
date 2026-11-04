@@ -29,8 +29,8 @@ def pht_hour(utc_str):
     dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     return dt.astimezone(PHT).hour
 
-def in_session(h):  # TEST MODE
-    return True  # TEST: always in session
+def in_session(h):
+    return (15 <= h <= 17) or (21 <= h <= 23)
 
 def calc_ema(closes, period):
     k = 2 / (period + 1)
@@ -173,6 +173,15 @@ def main():
             print("⏳ In session but no setup on this candle.")
         else:
             print(f"💤 Outside session (PHT hour: {h}). No scan needed.")
+
+    # TEMP TEST: send a fake signal to verify Telegram delivery
+    import os
+    if os.environ.get("SEND_TEST"):
+        fake = {"direction": "BUY", "entry": 2743.50, "sl": 2731.20, "tp": 2762.00,
+                "sl_pips": 123.0, "ema20": 2735.80, "time": candles[-1]["t"],
+                "trend": "20 EMA > 50 EMA (uptrend)"}
+        print("📨 Sending TEST signal to Telegram...")
+        send_telegram(fake)
 
 if __name__ == "__main__":
     main()
