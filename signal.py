@@ -29,8 +29,8 @@ def pht_hour(utc_str):
     dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     return dt.astimezone(PHT).hour
 
-def in_session(h):
-    return (15 <= h <= 17) or (21 <= h <= 23)
+def in_session(h):  # TEST MODE
+    return True  # TEST: always in session
 
 def calc_ema(closes, period):
     k = 2 / (period + 1)
