@@ -13,18 +13,15 @@ Strategy: EMA Pullback to 20 EMA
 """
 
 import os
-import sys
 import requests
 from datetime import datetime, timezone, timedelta
 
-# ── config (from GitHub Secrets) ─────────────────
-TD_KEY       = os.environ["TD_KEY"]
-TG_TOKEN     = os.environ["TG_TOKEN"]
-TG_CHAT_ID   = os.environ["TG_CHAT_ID"]
+TD_KEY     = os.environ["TD_KEY"]
+TG_TOKEN   = os.environ["TG_TOKEN"]
+TG_CHAT_ID = os.environ["TG_CHAT_ID"]
 
 PHT = timezone(timedelta(hours=8))
 
-# ── helpers ───────────────────────────────────────
 def pht_hour(utc_str):
     dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     return dt.astimezone(PHT).hour
@@ -53,84 +50,45 @@ def fetch_candles(n=120):
     if data.get("status") == "error":
         raise Exception(f"Twelve Data error: {data.get('message')}")
     candles = list(reversed(data["values"]))
-    return [
-        {
-            "t": c["datetime"],
-            "o": float(c["open"]),
-            "h": float(c["high"]),
-            "l": float(c["low"]),
-            "c": float(c["close"]),
-        }
-        for c in candles
-    ]
+    return [{"t": c["datetime"], "o": float(c["open"]), "h": float(c["high"]),
+             "l": float(c["low"]), "c": float(c["close"])} for c in candles]
 
 def detect_signal(candles):
     closes = [c["c"] for c in candles]
     e20 = calc_ema(closes, 20)
     e50 = calc_ema(closes, 50)
-
     idx = len(candles) - 1
     cur = candles[idx]
-
     if e20[idx] is None or e50[idx] is None:
         return None
-
-    # Session filter
     h = pht_hour(cur["t"])
     if not in_session(h):
         return None
-
-    ev = e20[idx]
-    e5 = e50[idx]
-    bull_trend = ev > e5
-    bear_trend = ev < e5
-
+    ev = e20[idx]; e5 = e50[idx]
+    bull_trend = ev > e5; bear_trend = ev < e5
     if not bull_trend and not bear_trend:
         return None
-
-    # Candle quality
     candle_size = cur["h"] - cur["l"]
     body = abs(cur["c"] - cur["o"])
-    if candle_size < 2:
+    if candle_size < 2 or body / candle_size < 0.35:
         return None
-    if body / candle_size < 0.35:
-        return None
-
-    # Touch tolerance: 0.1% of EMA
     tol = ev * 0.001
     direction = None
-
-    if bull_trend:
-        if cur["l"] <= ev + tol and cur["c"] > ev and cur["c"] > cur["o"]:
-            direction = "BUY"
-
-    if bear_trend:
-        if cur["h"] >= ev - tol and cur["c"] < ev and cur["c"] < cur["o"]:
-            direction = "SELL"
-
+    if bull_trend and cur["l"] <= ev + tol and cur["c"] > ev and cur["c"] > cur["o"]:
+        direction = "BUY"
+    if bear_trend and cur["h"] >= ev - tol and cur["c"] < ev and cur["c"] < cur["o"]:
+        direction = "SELL"
     if not direction:
         return None
-
-    # SL and TP
     sl_buf = max(candle_size * 0.7, 4.0)
     sl = ev - sl_buf if direction == "BUY" else ev + sl_buf
     if abs(cur["c"] - sl) < 6.0:
         return None
-
     r1 = abs(cur["c"] - sl)
     tp = cur["c"] + r1 * 1.5 if direction == "BUY" else cur["c"] - r1 * 1.5
-    sl_pips = round(abs(cur["c"] - sl) / 0.01, 1)
-
-    return {
-        "direction": direction,
-        "entry": cur["c"],
-        "sl": sl,
-        "tp": tp,
-        "sl_pips": sl_pips,
-        "ema20": ev,
-        "time": cur["t"],
-        "trend": "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)",
-    }
+    return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
+            "sl_pips": round(abs(cur["c"] - sl) / 0.01, 1), "ema20": ev,
+            "time": cur["t"], "trend": "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"}
 
 def send_telegram(signal):
     arrow = "🟢 ▲" if signal["direction"] == "BUY" else "🔴 ▼"
@@ -145,25 +103,19 @@ def send_telegram(signal):
         f"📈 Trend:  {signal['trend']}\n"
         f"🕐 Candle: `{signal['time']} UTC`\n"
         f"━━━━━━━━━━━━━━━\n"
-        f"_Strategy: EMA Pullback · 1H · XAUSignalBot_"
+        f"_Strategy: EMA Pullback · 1H · XAUPullbackBot_"
     )
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    r = requests.post(url, json={
-        "chat_id": TG_CHAT_ID,
-        "text": msg,
-        "parse_mode": "Markdown"
-    }, timeout=10)
+    r = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                      json={"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "Markdown"},
+                      timeout=10)
     r.raise_for_status()
     print(f"✅ Signal sent: {signal['direction']} @ {signal['entry']:.2f}")
 
 def main():
     print(f"🔍 Scanning XAU/USD 1H — {datetime.now(PHT).strftime('%Y-%m-%d %H:%M PHT')}")
-
     candles = fetch_candles(120)
     print(f"📦 Fetched {len(candles)} candles. Latest: {candles[-1]['t']}")
-
     signal = detect_signal(candles)
-
     if signal:
         print(f"🎯 Setup found: {signal['direction']} @ {signal['entry']:.2f}")
         send_telegram(signal)
@@ -173,13 +125,6 @@ def main():
             print("⏳ In session but no setup on this candle.")
         else:
             print(f"💤 Outside session (PHT hour: {h}). No scan needed.")
-
-    # TEMP TEST: always send a fake signal
-    fake = {"direction": "BUY", "entry": 2743.50, "sl": 2731.20, "tp": 2762.00,
-            "sl_pips": 123.0, "ema20": 2735.80, "time": candles[-1]["t"],
-            "trend": "20 EMA > 50 EMA (uptrend)"}
-    print("📨 Sending TEST signal to Telegram...")
-    send_telegram(fake)
 
 if __name__ == "__main__":
     main()
