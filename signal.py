@@ -185,20 +185,17 @@ def main():
     news_events = fetch_news_events()
     print("Found " + str(len(news_events)) + " high-impact news events this week.")
 
-    # Freshness check — warn if candle is more than 2 hours old
+    # Freshness check: warn if candle older than 2 hours
     now_utc = datetime.now(timezone.utc)
     latest_dt = datetime.strptime(latest, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     age_hours = (now_utc - latest_dt).total_seconds() / 3600
     if age_hours > 2:
-        stale_msg = ("⚠ *Stale data warning*
-"
-                     "Latest candle is " + str(round(age_hours, 1)) + "h old
-"
-                     "`" + latest + " UTC`
-"
+        stale_msg = ("WARNING: Stale candle data\n"
+                     "Latest candle is " + str(round(age_hours, 1)) + "h old\n"
+                     "`" + latest + " UTC`\n"
                      "_Twelve Data may be delayed_")
         send_telegram(stale_msg)
-        print("Warning: stale candle data - " + str(round(age_hours, 1)) + "h old")
+        print("Warning: stale candle - " + str(round(age_hours, 1)) + "h old")
 
     signal = detect_signal(candles, news_events)
     h = utc_hour(latest)
