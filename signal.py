@@ -26,8 +26,22 @@ def pht_hour(utc_str):
     dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     return dt.astimezone(PHT).hour
 
+def utc_hour(utc_str):
+    dt = datetime.strptime(utc_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    return dt.hour
+
 def in_session(h):
-    return (15 <= h <= 17) or (21 <= h <= 23)
+    # Adjust for DST: London (Mar-Oct) is UTC+1, NY (Mar-Nov) is UTC-4
+    # We check the UTC hour directly against session windows
+    # London: 07-09 UTC (winter) or 06-08 UTC (summer)
+    # NY:     13-15 UTC (winter) or 12-14 UTC (summer)
+    # Instead of PHT hour, use UTC hour from the candle timestamp directly
+    # This function now accepts UTC hour
+    london_winter = (7 <= h <= 9)    # UTC+0, Nov-Mar
+    london_summer = (6 <= h <= 8)    # UTC+1, Mar-Oct
+    ny_winter     = (13 <= h <= 15)  # UTC-5, Nov-Mar
+    ny_summer     = (12 <= h <= 14)  # UTC-4, Mar-Nov
+    return london_winter or london_summer or ny_winter or ny_summer
 
 def calc_ema(closes, period):
     k = 2 / (period + 1)
@@ -120,11 +134,11 @@ def main():
         print(f"🎯 Setup found: {signal['direction']} @ {signal['entry']:.2f}")
         send_telegram(signal)
     else:
-        h = pht_hour(candles[-1]["t"])
+        h = utc_hour(candles[-1]["t"])
         if in_session(h):
             print("⏳ In session but no setup on this candle.")
         else:
-            print(f"💤 Outside session (PHT hour: {h}). No scan needed.")
+            print(f"💤 Outside session (UTC hour: {h}). No scan needed.")
 
 if __name__ == "__main__":
     main()
