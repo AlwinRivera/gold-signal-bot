@@ -95,7 +95,7 @@ def detect_signal(candles, news_events):
     if not in_session(h):
         return None
     if is_near_news(cur["t"], news_events):
-        print("Skipping - high-impact news within 30 min of " + cur["t"])
+        print("Skipping - news within 30 min of " + cur["t"])
         return None
     ev = e20[idx]; e5 = e50[idx]
     bull_trend = ev > e5; bear_trend = ev < e5
@@ -131,17 +131,17 @@ def send_telegram(text):
     r.raise_for_status()
 
 def send_signal(signal):
-    arrow = "🟢 ▲" if signal["direction"] == "BUY" else "🔴 ▼"
+    arrow = "\U0001f7e2 \u25b2" if signal["direction"] == "BUY" else "\U0001f534 \u25bc"
     msg = (arrow + " *XAU/USD " + signal["direction"] + " SETUP*\n"
-           "━━━━━━━━━━━━━━━\n"
-           "📍 Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
-           "🛑 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pips"]) + " pips)\n"
-           "🎯 TP:     `" + f"{signal['tp']:.2f}" + "` (1.5R)\n"
-           "━━━━━━━━━━━━━━━\n"
-           "📊 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
-           "📈 Trend:  " + signal["trend"] + "\n"
-           "🕐 Candle: `" + signal["time"] + " UTC`\n"
-           "━━━━━━━━━━━━━━━\n"
+           "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+           "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
+           "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pips"]) + " pips)\n"
+           "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (1.5R)\n"
+           "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+           "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
+           "\U0001f4c8 Trend:  " + signal["trend"] + "\n"
+           "\U0001f550 Candle: `" + signal["time"] + " UTC`\n"
+           "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "_Strategy: EMA Pullback · 1H · XAUPullbackBot_")
     send_telegram(msg)
     print("Signal sent: " + signal["direction"] + " @ " + f"{signal['entry']:.2f}")
@@ -167,34 +167,46 @@ def log_to_sheet(signal):
 
 def send_daily_summary():
     today_pht = datetime.now(PHT).strftime("%Y-%m-%d")
-    msg = ("📊 *Daily Summary — " + today_pht + "*\n"
-           "━━━━━━━━━━━━━━━\n"
-           "🕐 NY session closed\n"
-           "📋 Check your signal log sheet for today's trades\n"
-           "━━━━━━━━━━━━━━━\n"
+    msg = ("\U0001f4ca *Daily Summary \u2014 " + today_pht + "*\n"
+           "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
+           "\U0001f550 NY session closed\n"
+           "\U0001f4cb Check your signal log sheet for today\'s trades\n"
+           "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "_XAUPullbackBot · EMA Pullback 1H_")
     send_telegram(msg)
     print("Daily summary sent.")
 
 def main():
-    print("Scanning XAU/USD 1H — " + datetime.now(PHT).strftime("%Y-%m-%d %H:%M PHT"))
+    now_pht = datetime.now(PHT).strftime("%Y-%m-%d %H:%M PHT")
+    print("Scanning XAU/USD 1H " + now_pht)
     candles = fetch_candles(120)
-    print("Fetched " + str(len(candles)) + " candles. Latest: " + candles[-1]["t"])
+    latest = candles[-1]["t"]
+    print("Fetched " + str(len(candles)) + " candles. Latest: " + latest)
     news_events = fetch_news_events()
     print("Found " + str(len(news_events)) + " high-impact news events this week.")
 
     signal = detect_signal(candles, news_events)
+    h = utc_hour(latest)
+
     if signal:
         send_signal(signal)
         log_to_sheet(signal)
+        status = "Signal fired!"
+    elif in_session(h):
+        status = "In session, no setup"
     else:
-        h = utc_hour(candles[-1]["t"])
-        if in_session(h):
-            print("In session but no setup on this candle.")
-        else:
-            print("Outside session (UTC hour: " + str(h) + "). No scan needed.")
+        status = "Outside session"
 
-    if utc_hour(candles[-1]["t"]) == 15:
+    # Heartbeat every hour
+    hb = ("\U0001f916 *XAUPullbackBot*\n"
+          "Status: " + status + "\n"
+          "\U0001f550 `" + latest + " UTC`\n"
+          "\U0001f4c5 " + now_pht + "\n"
+          "_Bot is running \u2705_")
+    send_telegram(hb)
+    print("Heartbeat sent.")
+
+    if h == 15:
         send_daily_summary()
 
 if __name__ == "__main__":
