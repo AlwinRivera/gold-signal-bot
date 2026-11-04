@@ -174,14 +174,12 @@ def main():
         else:
             print(f"💤 Outside session (PHT hour: {h}). No scan needed.")
 
-    # TEMP TEST: send a fake signal to verify Telegram delivery
-    import os
-    if os.environ.get("SEND_TEST"):
-        fake = {"direction": "BUY", "entry": 2743.50, "sl": 2731.20, "tp": 2762.00,
-                "sl_pips": 123.0, "ema20": 2735.80, "time": candles[-1]["t"],
-                "trend": "20 EMA > 50 EMA (uptrend)"}
-        print("📨 Sending TEST signal to Telegram...")
-        send_telegram(fake)
+    # TEMP TEST: always send a fake signal
+    fake = {"direction": "BUY", "entry": 2743.50, "sl": 2731.20, "tp": 2762.00,
+            "sl_pips": 123.0, "ema20": 2735.80, "time": candles[-1]["t"],
+            "trend": "20 EMA > 50 EMA (uptrend)"}
+    print("📨 Sending TEST signal to Telegram...")
+    send_telegram(fake)
 
 if __name__ == "__main__":
     main()
