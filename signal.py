@@ -93,6 +93,9 @@ def get_4h_trend():
         idx = len(candles_4h) - 1
         if e20_4h[idx] is None or e50_4h[idx] is None:
             return "neutral"
+        separation = abs(e20_4h[idx] - e50_4h[idx]) / e50_4h[idx]
+        if separation < 0.001:  # less than 0.1% apart = too close to call
+            return "neutral"
         if e20_4h[idx] > e50_4h[idx]:
             return "bull"
         elif e20_4h[idx] < e50_4h[idx]:
@@ -149,7 +152,7 @@ def detect_signal(candles, news_events):
     trend_label = "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"
     htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
     return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
-            "sl_pips": round(abs(cur["c"] - sl) / 0.01, 1), "ema20": ev,
+            "sl_pts": round(abs(cur["c"] - sl), 1), "ema20": ev,
             "time": cur["t"], "trend": trend_label, "htf": htf_label}
 
 def send_telegram(text):
