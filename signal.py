@@ -11,7 +11,9 @@ from datetime import datetime, timezone, timedelta
 TD_KEY     = os.environ["TD_KEY"]
 TG_TOKEN   = os.environ["TG_TOKEN"]
 TG_CHAT_ID = os.environ["TG_CHAT_ID"]
-SHEET_URL  = os.environ.get("SHEET_URL", "")
+SHEET_URL    = os.environ.get("SHEET_URL", "")
+ACCOUNT_SIZE = float(os.environ.get("ACCOUNT_SIZE", "10000"))
+RISK_PCT     = float(os.environ.get("RISK_PCT", "1.0"))
 
 PHT = timezone(timedelta(hours=8))
 
@@ -151,9 +153,14 @@ def detect_signal(candles, news_events):
     tp = cur["c"] + r1 * 1.5 if direction == "BUY" else cur["c"] - r1 * 1.5
     trend_label = "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"
     htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
+    stop_dist = abs(cur["c"] - sl)
+    risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
+    lot_size = round(risk_amt / (stop_dist * 100), 2)
+    lot_size = max(0.01, lot_size)  # minimum 0.01 lots
     return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
-            "sl_pts": round(abs(cur["c"] - sl), 1), "ema20": ev,
-            "time": cur["t"], "trend": trend_label, "htf": htf_label}
+            "sl_pts": round(stop_dist, 1), "ema20": ev,
+            "time": cur["t"], "trend": trend_label, "htf": htf_label,
+            "lot_size": lot_size, "risk_amt": round(risk_amt, 2)}
 
 def send_telegram(text):
     r = requests.post("https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage",
@@ -190,6 +197,8 @@ def log_to_sheet(signal):
             "ema20":       signal["ema20"],
             "trend":       signal["trend"],
             "htf_trend":   signal["htf"],
+            "lot_size":    signal["lot_size"],
+            "risk_amt":    signal["risk_amt"],
             "candle_time": signal["time"]
         }
         requests.post(SHEET_URL, json=payload, timeout=10)
