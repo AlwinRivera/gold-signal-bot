@@ -175,6 +175,7 @@ def send_signal(signal):
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
            "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (1.5R)\n"
+           "💰 Size:   `" + str(signal["lot_size"]) + " lots ($" + str(signal["risk_amt"]) + " risk)\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
            "\U0001f4c8 Trend:  " + signal["trend"] + "\n"
