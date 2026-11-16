@@ -11,6 +11,7 @@ slippage beyond a fixed spread cost per trade.
 
 import os
 import csv
+import time
 import requests
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
@@ -26,17 +27,42 @@ def parse(t):
     return datetime.strptime(t, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
 
-def fetch(interval, n=5000):
+def fetch_page(interval, end=None):
     url = ("https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=" + interval +
-           "&outputsize=" + str(n) + "&timezone=UTC&apikey=" + TD_KEY)
+           "&outputsize=5000&timezone=UTC&apikey=" + TD_KEY)
+    if end:
+        url += "&end_date=" + end.strftime("%Y-%m-%d %H:%M:%S")
     r = requests.get(url, timeout=60)
     r.raise_for_status()
     data = r.json()
     if data.get("status") == "error":
-        raise Exception("Twelve Data error: " + data.get("message", ""))
+        print("Twelve Data stopped paging: " + data.get("message", ""))
+        return []
     rows = list(reversed(data["values"]))
     return [{"t": parse(c["datetime"]), "o": float(c["open"]), "h": float(c["high"]),
              "l": float(c["low"]), "c": float(c["close"])} for c in rows]
+
+
+def fetch(interval, pages=1):
+    """Page backwards through history; free tier allows 8 requests/minute."""
+    out = []
+    end = None
+    for p in range(pages):
+        if p:
+            time.sleep(9)
+        page = fetch_page(interval, end)
+        if out:
+            page = [c for c in page if c["t"] < out[0]["t"]]
+        if not page:
+            break
+        out = page + out
+        end = out[0]["t"] - timedelta(minutes=1)
+        print(interval + " page " + str(p + 1) + ": back to " + out[0]["t"].strftime("%Y-%m-%d"))
+    # drop the still-forming last candle, like the live bot
+    span = timedelta(hours=4) if interval == "4h" else timedelta(hours=1)
+    if out and out[-1]["t"] + span > datetime.now(timezone.utc):
+        out = out[:-1]
+    return out
 
 
 # Same EMA as signal.py: SMA seed over the first `period` closes of the window
@@ -191,8 +217,9 @@ def fmt_row(name, s, months):
 
 
 def main():
-    c1 = fetch("1h")
-    c4 = fetch("4h")
+    pages = int(os.environ.get("PAGES", "4"))
+    c1 = fetch("1h", pages)
+    c4 = fetch("4h", max(1, pages // 3))
     start, end = c1[120]["t"], c1[-1]["t"]
     months = max((end - start).days / 30.4, 0.1)
 
@@ -233,7 +260,7 @@ def main():
         ]
         bymonth = defaultdict(list)
         for t in live:
-            bymonth[t["time"].strftime("%Y-%m")].append(t)
+            bymonth[str(t["time"].year) + "-Q" + str((t["time"].month - 1) // 3 + 1)].append(t)
         for m in sorted(bymonth):
             slices.append((m, bymonth[m]))
         for name, ts in slices:
