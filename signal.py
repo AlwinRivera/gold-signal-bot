@@ -159,7 +159,7 @@ def detect_signal(candles, news_events):
     if abs(cur["c"] - sl) < 6.0:
         return None
     r1 = abs(cur["c"] - sl)
-    tp = cur["c"] + r1 * 1.5 if direction == "BUY" else cur["c"] - r1 * 1.5
+    tp = cur["c"] + r1 * 2.0 if direction == "BUY" else cur["c"] - r1 * 2.0
     trend_label = "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"
     htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
     stop_dist = abs(cur["c"] - sl)
@@ -187,7 +187,7 @@ def send_signal(signal):
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
-           "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (1.5R)\n"
+           "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (2R)\n"
            "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
