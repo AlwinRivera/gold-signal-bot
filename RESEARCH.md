@@ -54,3 +54,27 @@ phases at 0.25%, 0.5%, 0.75%, 1% and 1.25% risk per trade. The live bot will use
 combination and risk level with the best chance of passing both phases.
 
 If nothing passes, the answer is "no tradable edge found yet", and no challenge is bought.
+
+## Round 1 result (2026-11-16)
+
+No pair passed. Per the plan above: no challenge is bought on this evidence.
+
+## Round 2 (declared 2026-11-16, after seeing Round 1)
+
+Round 1 used all the history we have, so the near-misses can only be judged fairly on
+data that did not exist yet when they were picked.
+
+**Candidates** (rule: net profit in BOTH periods, and profit factor at least 1.2 in 2026):
+
+- S1 EMA pullback, XAU/USD (current bot)
+- S2 Prev-day breakout, USD/JPY
+- S2 Prev-day breakout, XAU/USD
+- S4 RSI(2) dip with daily trend, XAU/USD
+
+Rules are frozen exactly as written above. Judged **only on trades from 2026-11-17 onwards**.
+
+**Pass rule:** profit factor at least 1.2 on the new data with at least 25 trades.
+**Basket:** the candidates that pass are combined and run through the same FTMO simulation.
+
+The research workflow re-runs automatically on the 1st of every month and posts a summary
+to Telegram. First realistic verdict: around February 2027.

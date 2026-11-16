@@ -1,6 +1,8 @@
 name: Strategy research
 
 on:
+  schedule:
+    - cron: '0 1 1 * *'   # 1st of every month, 01:00 UTC (9 AM PHT)
   workflow_dispatch:
 
 jobs:
@@ -16,4 +18,6 @@ jobs:
       - name: Run research
         env:
           TD_KEY: ${{ secrets.TD_KEY }}
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: python research.py

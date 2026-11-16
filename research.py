@@ -16,6 +16,9 @@ import backtest as bt
 
 MARKETS = [("XAU/USD", 0.30), ("EUR/USD", 0.00012), ("USD/JPY", 0.015)]
 SPLIT = datetime(2026, 1, 1, tzinfo=timezone.utc)
+FRESH = datetime(2026, 11, 17, tzinfo=timezone.utc)  # Round 2: only data after this counts
+ROUND2 = [("S1 EMA pullback (bot)", "XAU/USD"), ("S2 Prev-day breakout", "USD/JPY"),
+          ("S2 Prev-day breakout", "XAU/USD"), ("S4 RSI(2) dip, daily trend", "XAU/USD")]
 PAGES = int(os.environ.get("PAGES", "4"))
 SIMS = int(os.environ.get("SIMS", "3000"))
 RISKS = [0.25, 0.5, 0.75, 1.0, 1.25]
@@ -425,8 +428,56 @@ def main():
             out.append("| " + nx + " | " + " | ".join(row) + " |")
         out.append("")
 
+    # Round 2: frozen near-misses, judged only on data after FRESH
+    out.append("## Round 2: fresh data since " + FRESH.strftime("%Y-%m-%d"))
+    out.append("")
+    out.append("| Candidate | Trades | Win% | Net | PF | Status |")
+    out.append("|---|---|---|---|---|---|")
+    tg = ["XAUPullbackBot monthly research check", "Fresh data since " + FRESH.strftime("%d %b %Y"), ""]
+    passed = []
+    for m in ROUND2:
+        st = bt.stats([t for t in results.get(m, []) if t["time"] >= FRESH])
+        label = m[0] + " " + m[1]
+        if not st:
+            out.append("| " + label + " | 0 | - | - | - | waiting |")
+            tg.append(label + ": 0 trades yet")
+            continue
+        status = "waiting" if st["n"] < 25 else ("PASS" if st["pf"] >= 1.2 else "fail")
+        if status == "PASS":
+            passed.append(m)
+        out.append("| " + label + " | " + str(st["n"]) + " | " + fmt(st["wr"], 1) + "% | " + fmt(st["net"], 1) +
+                   "R | " + fmt(st["pf"]) + " | " + status + " |")
+        tg.append(label + ": " + str(st["n"]) + " trades, " + fmt(st["net"], 1) + "R, PF " + fmt(st["pf"]) +
+                  " (" + status + ")")
+    out.append("")
+    if passed:
+        trades = sorted([t for m in passed for t in results[m]], key=lambda t: t["time"])
+        tg.append("")
+        tg.append("Passed: " + ", ".join(m[0] + " " + m[1] for m in passed))
+        out.append("**Passed so far:** " + ", ".join(m[0] + " " + m[1] for m in passed))
+        out.append("")
+        out.append("| Risk per trade | Pass Phase 1 | Pass both (funded) | Fail | Median months to funded |")
+        out.append("|---|---|---|---|---|")
+        for risk, p1, both, fails, med in ftmo_odds(trades, SIMS):
+            out.append("| " + str(risk) + "% | " + fmt(p1, 1) + "% | " + fmt(both, 1) + "% | " + fmt(fails, 1) +
+                       "% | " + fmt(med, 1) + " |")
+            tg.append(str(risk) + "% risk: " + fmt(both, 0) + "% funded odds")
+        out.append("")
+    else:
+        tg.append("")
+        tg.append("Nothing has passed on fresh data yet. Keep forward testing, no paid challenge.")
+    tg.append("Rules: need 25+ trades and PF 1.2+ on new data.")
+
     report = "\n".join(out)
     print(report)
+    tok, chat = os.environ.get("TG_TOKEN"), os.environ.get("TG_CHAT_ID")
+    if tok and chat:
+        try:
+            import requests
+            requests.post("https://api.telegram.org/bot" + tok + "/sendMessage",
+                          json={"chat_id": chat, "text": "\n".join(tg)}, timeout=10)
+        except Exception as e:
+            print("Telegram summary failed: " + type(e).__name__)
     path = os.environ.get("GITHUB_STEP_SUMMARY")
     if path:
         with open(path, "a", encoding="utf-8") as f:
