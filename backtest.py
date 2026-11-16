@@ -77,6 +77,11 @@ def calc_ema(closes, period):
     return ema
 
 
+def market_open(t):
+    """Gold trades Sun ~22:00 UTC to Fri ~21:00 UTC. Drop Saturday and Sunday before 22:00."""
+    return not (t.weekday() == 5 or (t.weekday() == 6 and t.hour < 22))
+
+
 def in_session(h):
     return (6 <= h <= 9) or (12 <= h <= 15)
 
@@ -220,6 +225,16 @@ def main():
     pages = int(os.environ.get("PAGES", "4"))
     c1 = fetch("1h", pages)
     c4 = fetch("4h", max(1, pages // 3))
+    wk = defaultdict(int)
+    for c in c1:
+        wk[c["t"].strftime("%a")] += 1
+    print("1H candles by weekday (UTC): " + str(dict(wk)))
+    sun = sorted(set(c["t"].hour for c in c1 if c["t"].weekday() == 6))
+    print("Sunday hours present (UTC): " + str(sun))
+    if os.environ.get("KEEP_WEEKENDS") != "1":
+        c1 = [c for c in c1 if market_open(c["t"])]
+        c4 = [c for c in c4 if market_open(c["t"])]
+        print("After dropping weekend candles: " + str(len(c1)) + " 1H candles")
     start, end = c1[120]["t"], c1[-1]["t"]
     months = max((end - start).days / 30.4, 0.1)
 
