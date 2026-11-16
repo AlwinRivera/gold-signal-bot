@@ -102,7 +102,7 @@ def htf_trend(c4, as_of, sep_min):
     return "bull" if a > b else ("bear" if a < b else "neutral")
 
 
-def detect(window, htf_mode, c4, sessions="both"):
+def detect(window, htf_mode, c4, sessions="both", rr=1.5, daily=None):
     """Mirror of signal.py detect_signal on a 120-candle window (news filter excluded)."""
     closes = [c["c"] for c in window]
     e20 = calc_ema(closes, 20)
@@ -139,18 +139,23 @@ def detect(window, htf_mode, c4, sessions="both"):
         d = "SELL"
     if not d:
         return None
+    if daily is not None:
+        want = "BUY" if daily.get(cur["t"].date()) == "bull" else ("SELL" if daily.get(cur["t"].date()) == "bear" else None)
+        if d != want:
+            return None
     buf = max(size * 0.7, 4.0)
     sl = ev - buf if d == "BUY" else ev + buf
     if abs(cur["c"] - sl) < 6.0:
         return None
     r1 = abs(cur["c"] - sl)
-    tp = cur["c"] + 1.5 * r1 if d == "BUY" else cur["c"] - 1.5 * r1
-    return {"dir": d, "entry": cur["c"], "sl": sl, "tp": tp, "risk": r1}
+    tp = cur["c"] + rr * r1 if d == "BUY" else cur["c"] - rr * r1
+    return {"dir": d, "entry": cur["c"], "sl": sl, "tp": tp, "risk": r1, "rr": rr}
 
 
 def resolve(sig, future):
     """Walk forward bar by bar. If SL and TP are both inside one bar, count it as a loss."""
-    for j, b in enumerate(future[:MAX_BARS]):
+    mb = sig.get("max_bars", MAX_BARS)
+    for j, b in enumerate(future[:mb]):
         if sig["dir"] == "BUY":
             hit_sl, hit_tp = b["l"] <= sig["sl"], b["h"] >= sig["tp"]
         else:
@@ -158,22 +163,22 @@ def resolve(sig, future):
         if hit_sl:
             return "LOSS", -1.0, j + 1, b["t"]
         if hit_tp:
-            return "WIN", 1.5, j + 1, b["t"]
+            return "WIN", sig.get("rr", 1.5), j + 1, b["t"]
     if not future:
         return "OPEN", 0.0, 0, None
-    last = future[min(MAX_BARS, len(future)) - 1]
+    last = future[min(mb, len(future)) - 1]
     move = last["c"] - sig["entry"] if sig["dir"] == "BUY" else sig["entry"] - last["c"]
-    return "TIMEOUT", move / sig["risk"], min(MAX_BARS, len(future)), last["t"]
+    return "TIMEOUT", move / sig["risk"], min(mb, len(future)), last["t"]
 
 
-def run(c1, c4, htf_mode, sessions="both"):
+def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
         window = c1[i - 119:i + 1]
         if busy_until is not None and window[-1]["t"] < busy_until:
             continue  # one position at a time
-        sig = detect(window, htf_mode, c4, sessions)
+        sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
             continue
         res, r, bars, exit_t = resolve(sig, c1[i + 1:])
@@ -185,6 +190,61 @@ def run(c1, c4, htf_mode, sessions="both"):
                        "sl": round(sig["sl"], 2), "tp": round(sig["tp"], 2),
                        "risk_pts": round(sig["risk"], 2), "result": res, "r": round(r, 3),
                        "bars": bars})
+    return trades
+
+
+def daily_bias(c1):
+    """For each trading day: 'bull' if the previous day closed above its daily 50 EMA, else 'bear'."""
+    closes_by_day = {}
+    for c in c1:
+        closes_by_day[c["t"].date()] = c["c"]  # last 1H close of the UTC day
+    days = sorted(closes_by_day)
+    closes = [closes_by_day[d] for d in days]
+    ema = calc_ema(closes, 50)
+    bias = {}
+    for k in range(len(days) - 1):
+        if ema[k] is not None:
+            bias[days[k + 1]] = "bull" if closes[k] > ema[k] else "bear"
+    return bias
+
+
+def run_breakout(c1, rr=1.5):
+    """London breakout of the Asian range.
+    Asian range = high/low of the 00:00-05:00 UTC candles. First London candle (06-09 UTC)
+    that closes outside it is the entry; stop at the middle of the range; target rr x risk;
+    anything still open at 20:00 UTC is closed at market. One trade per day."""
+    trades = []
+    by_day = defaultdict(list)
+    for i, c in enumerate(c1):
+        by_day[c["t"].date()].append(i)
+    for day in sorted(by_day):
+        idx = by_day[day]
+        asia = [c1[i] for i in idx if c1[i]["t"].hour <= 5]
+        if len(asia) < 5:
+            continue
+        hi = max(c["h"] for c in asia)
+        lo = min(c["l"] for c in asia)
+        mid = (hi + lo) / 2
+        for i in idx:
+            c = c1[i]
+            if not 6 <= c["t"].hour <= 9:
+                continue
+            d = "BUY" if c["c"] > hi else ("SELL" if c["c"] < lo else None)
+            if not d:
+                continue
+            risk = abs(c["c"] - mid)
+            if risk < 2:
+                break
+            tp = c["c"] + rr * risk if d == "BUY" else c["c"] - rr * risk
+            sig = {"dir": d, "entry": c["c"], "sl": mid, "tp": tp, "risk": risk, "rr": rr,
+                   "max_bars": max(1, 20 - (c["t"].hour + 1))}
+            res, r, bars, exit_t = resolve(sig, c1[i + 1:])
+            if res != "OPEN":
+                r -= SPREAD_PTS / risk
+                trades.append({"time": c["t"], "dir": d, "entry": round(c["c"], 2), "sl": round(mid, 2),
+                               "tp": round(tp, 2), "risk_pts": round(risk, 2), "result": res,
+                               "r": round(r, 3), "bars": bars})
+            break
     return trades
 
 
@@ -281,6 +341,33 @@ def main():
             span = 23.0 if "2024" in period else max((end - split).days / 30.4, 0.1)
             out.append(fmt_row(label, stats(ts), span))
         out.append("")
+
+    # Strategy shootout: three ideas fixed in advance, judged on both periods
+    bias = daily_bias(c1)
+    ideas = [("Current bot (EMA pullback 1.5R)", results["live"]),
+             ("A: London breakout of Asian range", run_breakout(c1)),
+             ("B: EMA pullback, 2R target", run(c1, c4, "live", "both", 2.0)),
+             ("C: EMA pullback, daily trend only", run(c1, c4, "live", "both", 1.5, bias))]
+    out.append("## Strategy shootout")
+    out.append("")
+    out.append("Pass = profit factor >= 1.2 in BOTH periods.")
+    out.append("")
+    out.append("| Strategy | 2024-25 trades | 2024-25 win% | 2024-25 net | 2024-25 PF | 2026 trades | 2026 win% | 2026 net | 2026 PF | Max DD (all) | Risk/trade to keep DD under 8% |")
+    out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+    for label, ts in ideas:
+        a = stats([t for t in ts if t["time"] < split])
+        b = stats([t for t in ts if t["time"] >= split])
+        allst = stats(ts)
+        if not (a and b and allst):
+            out.append("| " + label + " | not enough trades |")
+            continue
+        safe = round(8.0 / abs(allst["dd"]), 2) if allst["dd"] < 0 else 2.0
+        ok = a["pf"] >= 1.2 and b["pf"] >= 1.2
+        out.append("| " + label + (" **PASS**" if ok else "") + " | " + str(a["n"]) + " | " + str(round(a["wr"], 1)) +
+                   "% | " + str(round(a["net"], 1)) + "R | " + str(round(a["pf"], 2)) + " | " + str(b["n"]) + " | " +
+                   str(round(b["wr"], 1)) + "% | " + str(round(b["net"], 1)) + "R | " + str(round(b["pf"], 2)) +
+                   " | " + str(round(allst["dd"], 1)) + "R | " + str(safe) + "% |")
+    out.append("")
 
     live = results["live"]
     if live:
