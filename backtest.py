@@ -27,8 +27,8 @@ def parse(t):
     return datetime.strptime(t, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
 
-def fetch_page(interval, end=None):
-    url = ("https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=" + interval +
+def fetch_page(interval, end=None, symbol="XAU/USD"):
+    url = ("https://api.twelvedata.com/time_series?symbol=" + symbol + "&interval=" + interval +
            "&outputsize=5000&timezone=UTC&apikey=" + TD_KEY)
     if end:
         url += "&end_date=" + end.strftime("%Y-%m-%d %H:%M:%S")
@@ -43,21 +43,21 @@ def fetch_page(interval, end=None):
              "l": float(c["low"]), "c": float(c["close"])} for c in rows]
 
 
-def fetch(interval, pages=1):
+def fetch(interval, pages=1, symbol="XAU/USD"):
     """Page backwards through history; free tier allows 8 requests/minute."""
     out = []
     end = None
     for p in range(pages):
         if p:
             time.sleep(9)
-        page = fetch_page(interval, end)
+        page = fetch_page(interval, end, symbol)
         if out:
             page = [c for c in page if c["t"] < out[0]["t"]]
         if not page:
             break
         out = page + out
         end = out[0]["t"] - timedelta(minutes=1)
-        print(interval + " page " + str(p + 1) + ": back to " + out[0]["t"].strftime("%Y-%m-%d"))
+        print(symbol + " " + interval + " page " + str(p + 1) + ": back to " + out[0]["t"].strftime("%Y-%m-%d"))
     # drop the still-forming last candle, like the live bot
     span = timedelta(hours=4) if interval == "4h" else timedelta(hours=1)
     if out and out[-1]["t"] + span > datetime.now(timezone.utc):
@@ -252,7 +252,7 @@ def stats(trades):
     n = len(trades)
     if n == 0:
         return None
-    wins = sum(1 for t in trades if t["result"] == "WIN")
+    wins = sum(1 for t in trades if t["r"] > 0)
     net = sum(t["r"] for t in trades)
     eq = peak = dd = 0.0
     streak = worst_streak = 0
