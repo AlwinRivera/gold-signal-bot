@@ -82,8 +82,10 @@ def market_open(t):
     return not (t.weekday() == 5 or (t.weekday() == 6 and t.hour < 22))
 
 
-def in_session(h):
-    return (6 <= h <= 9) or (12 <= h <= 15)
+def in_session(h, sessions="both"):
+    london = 6 <= h <= 9
+    ny = 12 <= h <= 15
+    return london if sessions == "london" else (ny if sessions == "ny" else london or ny)
 
 
 def htf_trend(c4, as_of, sep_min):
@@ -100,7 +102,7 @@ def htf_trend(c4, as_of, sep_min):
     return "bull" if a > b else ("bear" if a < b else "neutral")
 
 
-def detect(window, htf_mode, c4):
+def detect(window, htf_mode, c4, sessions="both"):
     """Mirror of signal.py detect_signal on a 120-candle window (news filter excluded)."""
     closes = [c["c"] for c in window]
     e20 = calc_ema(closes, 20)
@@ -109,7 +111,7 @@ def detect(window, htf_mode, c4):
     ev, e5 = e20[-1], e50[-1]
     if ev is None or e5 is None:
         return None
-    if not in_session(cur["t"].hour):
+    if not in_session(cur["t"].hour, sessions):
         return None
     bull, bear = ev > e5, ev < e5
 
@@ -164,14 +166,14 @@ def resolve(sig, future):
     return "TIMEOUT", move / sig["risk"], min(MAX_BARS, len(future)), last["t"]
 
 
-def run(c1, c4, htf_mode):
+def run(c1, c4, htf_mode, sessions="both"):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
         window = c1[i - 119:i + 1]
         if busy_until is not None and window[-1]["t"] < busy_until:
             continue  # one position at a time
-        sig = detect(window, htf_mode, c4)
+        sig = detect(window, htf_mode, c4, sessions)
         if not sig:
             continue
         res, r, bars, exit_t = resolve(sig, c1[i + 1:])
@@ -260,6 +262,25 @@ def main():
     out.append("")
     out.append("Break-even win rate at 1.5R is 40%. $ figures assume $100 risk per trade (1% of $10k).")
     out.append("")
+
+    # Out-of-sample check: judge on 2024-2025, confirm on 2026 (data the idea was not picked from)
+    split = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    oos = [("Current: London + NY", "live", "both"),
+           ("London only", "live", "london"),
+           ("NY only", "live", "ny")]
+    out.append("## Out-of-sample check")
+    out.append("")
+    for period, keep in [("2024-2025 (in-sample)", lambda t: t["time"] < split),
+                         ("2026 (out-of-sample)", lambda t: t["time"] >= split)]:
+        out.append("**" + period + "**")
+        out.append("")
+        out.append("| Variant | Trades | Win rate | Avg R | Net | Profit factor | Max DD | Worst losing streak | Worst day |")
+        out.append("|---|---|---|---|---|---|---|---|---|")
+        for label, mode, sess in oos:
+            ts = [t for t in run(c1, c4, mode, sess) if keep(t)]
+            span = 23.0 if "2024" in period else max((end - split).days / 30.4, 0.1)
+            out.append(fmt_row(label, stats(ts), span))
+        out.append("")
 
     live = results["live"]
     if live:
