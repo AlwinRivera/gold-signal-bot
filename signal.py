@@ -75,7 +75,7 @@ def calc_ema(closes, period):
 
 def fetch_candles(n=120, interval="1h"):
     url = ("https://api.twelvedata.com/time_series"
-           "?symbol=XAU/USD&interval=" + interval + "&outputsize=" + str(n) + "&apikey=" + TD_KEY)
+           "?symbol=XAU/USD&interval=" + interval + "&outputsize=" + str(n) + "&timezone=UTC&apikey=" + TD_KEY)
     r = requests.get(url, timeout=15)
     r.raise_for_status()
     data = r.json()
@@ -163,10 +163,14 @@ def detect_signal(candles, news_events):
             "lot_size": lot_size, "risk_amt": round(risk_amt, 2)}
 
 def send_telegram(text):
-    r = requests.post("https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage",
-                      json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"},
+    api = "https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage"
+    r = requests.post(api, json={"chat_id": TG_CHAT_ID, "text": text, "parse_mode": "Markdown"},
                       timeout=10)
-    r.raise_for_status()
+    if r.status_code == 400:
+        # Markdown parse failure: resend as plain text so the message still arrives
+        r = requests.post(api, json={"chat_id": TG_CHAT_ID, "text": text}, timeout=10)
+    if not r.ok:
+        raise Exception("Telegram send failed: HTTP " + str(r.status_code))
 
 def send_signal(signal):
     arrow = "\U0001f7e2 \u25b2" if signal["direction"] == "BUY" else "\U0001f534 \u25bc"
@@ -175,7 +179,7 @@ def send_signal(signal):
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
            "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (1.5R)\n"
-           "💰 Size:   `" + str(signal["lot_size"]) + " lots ($" + str(signal["risk_amt"]) + " risk)\n"
+           "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
            "\U0001f4c8 Trend:  " + signal["trend"] + "\n"
@@ -268,7 +272,7 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         import requests as _r
-        err = "\u26a0\ufe0f Bot error: " + str(e)
+        err = "\u26a0\ufe0f Bot error: " + str(e).replace(TG_TOKEN, "***").replace(TD_KEY, "***")
         print(err)
         try:
             _r.post("https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage",
