@@ -124,6 +124,9 @@ def detect_signal(candles, news_events):
     h = utc_hour(cur["t"])
     if not in_session(h):
         return None
+    # Twelve Data includes weekend quotes for gold; the real market is shut Sat to Sun ~22:00 UTC
+    if datetime.strptime(cur["t"], "%Y-%m-%d %H:%M:%S").weekday() >= 5:
+        return None
     if is_near_news(cur["t"], news_events):
         print("Skipping - news within 30 min of " + cur["t"])
         return None
