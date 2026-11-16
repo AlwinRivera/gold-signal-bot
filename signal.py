@@ -82,8 +82,14 @@ def fetch_candles(n=120, interval="1h"):
     if data.get("status") == "error":
         raise Exception("Twelve Data error: " + data.get("message", ""))
     candles = list(reversed(data["values"]))
-    return [{"t": c["datetime"], "o": float(c["open"]), "h": float(c["high"]),
-             "l": float(c["low"]), "c": float(c["close"])} for c in candles]
+    out = [{"t": c["datetime"], "o": float(c["open"]), "h": float(c["high"]),
+            "l": float(c["low"]), "c": float(c["close"])} for c in candles]
+    # Drop the still-forming candle: only trade on fully closed candles
+    span = timedelta(hours=4) if interval == "4h" else timedelta(hours=1)
+    last_start = datetime.strptime(out[-1]["t"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    if last_start + span > datetime.now(timezone.utc):
+        out = out[:-1]
+    return out
 
 def get_4h_trend():
     """Returns 'bull', 'bear', or 'neutral' based on 4H 20/50 EMA alignment."""
