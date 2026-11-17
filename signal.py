@@ -282,6 +282,9 @@ def main():
     losses_today = 0
     try:
         tracked = [t for t in track_results(candles_all) if t.get("exit")]
+        for t in tracked[-3:]:
+            print("Tracked: " + t["time"].strftime("%Y-%m-%d %H:%M") + " " + t["dir"] + " " + t["result"] +
+                  " " + str(round(t["r"], 2)) + "R, closed " + t["exit"].strftime("%Y-%m-%d %H:%M"))
         losses_today = sum(1 for t in tracked if t["exit"].date() == latest_dt.date() and t["r"] < 0)
         for t in tracked:
             if t["exit"] == latest_dt:
