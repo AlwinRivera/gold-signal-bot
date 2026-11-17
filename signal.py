@@ -181,9 +181,34 @@ def send_telegram(text):
     if not r.ok:
         raise Exception("Telegram send failed: HTTP " + str(r.status_code))
 
-def send_signal(signal):
+def track_results(candles_raw):
+    """Rebuild recent signals with the backtest engine (same rules, 2R) and resolve them.
+    Stateless: every run recomputes the last few days from candle history."""
+    import backtest as bt
+    def conv(cs):
+        out = [{"t": datetime.strptime(c["t"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc),
+                "o": c["o"], "h": c["h"], "l": c["l"], "c": c["c"]} for c in cs]
+        return [c for c in out if bt.market_open(c["t"])]
+    c1 = conv(candles_raw)
+    c4 = conv(fetch_candles(120, interval="4h"))
+    return bt.run(c1, c4, "live", "both", 2.0, None, False)  # every signal, like the live bot
+
+def send_result(t, losses_today):
+    risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
+    head = {"WIN": "\u2705 WIN", "LOSS": "\u274c LOSS"}.get(t["result"], "\u23f1 CLOSED (time limit)")
+    usd = t["r"] * risk_amt
+    msg = (head + " - XAU/USD " + t["dir"] + "\n"
+           "Signal candle: " + t["time"].strftime("%Y-%m-%d %H:%M") + " UTC\n"
+           "Entry " + f"{t['entry']:.2f}" + "  SL " + f"{t['sl']:.2f}" + "  TP " + f"{t['tp']:.2f}" + "\n"
+           "Result: " + ("+" if t["r"] >= 0 else "") + f"{t['r']:.2f}" + "R (about " +
+           ("+" if usd >= 0 else "-") + "$" + f"{abs(usd):.0f}" + ")\n"
+           "Losses today: " + str(losses_today) + " of 2")
+    send_telegram(msg)
+
+def send_signal(signal, stopped=False):
     arrow = "\U0001f7e2 \u25b2" if signal["direction"] == "BUY" else "\U0001f534 \u25bc"
-    msg = (arrow + " *XAU/USD " + signal["direction"] + " SETUP*\n"
+    stop = ("\u26d4 DAILY STOP: 2 losses today. DO NOT TAKE THIS ONE.\n" if stopped else "")
+    msg = (stop + arrow + " *XAU/USD " + signal["direction"] + " SETUP*\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
@@ -234,7 +259,8 @@ def send_daily_summary():
 def main():
     now_pht = datetime.now(PHT).strftime("%Y-%m-%d %H:%M PHT")
     print("Scanning XAU/USD 1H " + now_pht)
-    candles = fetch_candles(120)
+    candles_all = fetch_candles(250)
+    candles = candles_all[-120:]  # detection uses the same 120-candle window as before
     latest = candles[-1]["t"]
     print("Fetched " + str(len(candles)) + " candles. Latest: " + latest)
     news_events = fetch_news_events()
@@ -252,13 +278,25 @@ def main():
         send_telegram(stale_msg)
         print("Warning: stale candle - " + str(round(age_hours, 1)) + "h old")
 
+    # Results of earlier signals + daily stop (2 losses in a UTC day)
+    losses_today = 0
+    try:
+        tracked = [t for t in track_results(candles_all) if t.get("exit")]
+        losses_today = sum(1 for t in tracked if t["exit"].date() == latest_dt.date() and t["r"] < 0)
+        for t in tracked:
+            if t["exit"] == latest_dt:
+                send_result(t, losses_today)
+    except Exception as e:
+        print("Result tracking failed: " + type(e).__name__ + " " + str(e)[:100])
+
     signal = detect_signal(candles, news_events)
     h = utc_hour(latest)
 
     if signal:
-        send_signal(signal)
+        stopped = losses_today >= 2
+        send_signal(signal, stopped)
         log_to_sheet(signal)
-        status = "Signal fired!"
+        status = "Signal fired (daily stop - skip)" if stopped else "Signal fired!"
     elif in_session(h):
         status = "In session, no setup"
     else:

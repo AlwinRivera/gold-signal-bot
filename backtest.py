@@ -164,19 +164,19 @@ def resolve(sig, future):
             return "LOSS", -1.0, j + 1, b["t"]
         if hit_tp:
             return "WIN", sig.get("rr", 1.5), j + 1, b["t"]
-    if not future:
-        return "OPEN", 0.0, 0, None
+    if len(future) < mb:
+        return "OPEN", 0.0, 0, None  # not resolved yet and the time limit has not passed
     last = future[min(mb, len(future)) - 1]
     move = last["c"] - sig["entry"] if sig["dir"] == "BUY" else sig["entry"] - last["c"]
     return "TIMEOUT", move / sig["risk"], min(mb, len(future)), last["t"]
 
 
-def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None):
+def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
         window = c1[i - 119:i + 1]
-        if busy_until is not None and window[-1]["t"] < busy_until:
+        if one_at_a_time and busy_until is not None and window[-1]["t"] < busy_until:
             continue  # one position at a time
         sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
@@ -189,7 +189,7 @@ def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None):
         trades.append({"time": window[-1]["t"], "dir": sig["dir"], "entry": round(sig["entry"], 2),
                        "sl": round(sig["sl"], 2), "tp": round(sig["tp"], 2),
                        "risk_pts": round(sig["risk"], 2), "result": res, "r": round(r, 3),
-                       "bars": bars})
+                       "bars": bars, "exit": exit_t})
     return trades
 
 
