@@ -171,18 +171,27 @@ def resolve(sig, future):
     return "TIMEOUT", move / sig["risk"], min(mb, len(future)), last["t"]
 
 
-def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True):
+def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True,
+        include_open=False, skip=None):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
         window = c1[i - 119:i + 1]
         if one_at_a_time and busy_until is not None and window[-1]["t"] < busy_until:
             continue  # one position at a time
+        if skip is not None and skip(window[-1]["t"]):
+            continue
         sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
             continue
         res, r, bars, exit_t = resolve(sig, c1[i + 1:])
         if res == "OPEN":
+            if include_open:
+                trades.append({"time": window[-1]["t"], "dir": sig["dir"], "entry": round(sig["entry"], 2),
+                               "sl": round(sig["sl"], 2), "tp": round(sig["tp"], 2),
+                               "risk_pts": round(sig["risk"], 2), "result": "OPEN", "r": 0.0,
+                               "bars": 0, "exit": None})
+                busy_until = datetime.max.replace(tzinfo=timezone.utc)
             continue
         r -= SPREAD_PTS / sig["risk"]  # spread cost, in R
         busy_until = exit_t

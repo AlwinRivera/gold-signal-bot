@@ -4,6 +4,7 @@ Runs hourly via GitHub Actions, sends Telegram alert when setup fires.
 """
 
 import os
+import math
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone, timedelta
@@ -57,12 +58,17 @@ def fetch_news_events():
 def is_near_news(candle_time_str, events, buffer_minutes=30):
     if not events:
         return False
-    candle_dt = datetime.strptime(candle_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    # Entry happens at the candle's close, one hour after its start
+    entry_dt = datetime.strptime(candle_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc) + timedelta(hours=1)
     buf = timedelta(minutes=buffer_minutes)
     for ev in events:
-        if abs(candle_dt - ev) <= buf:
+        if abs(entry_dt - ev) <= buf:
             return True
     return False
+
+def market_open(dt):
+    """Same rule as the backtest: gold is shut Saturday and Sunday before 22:00 UTC."""
+    return not (dt.weekday() == 5 or (dt.weekday() == 6 and dt.hour < 22))
 
 def calc_ema(closes, period):
     k = 2 / (period + 1)
@@ -90,12 +96,14 @@ def fetch_candles(n=120, interval="1h"):
     last_start = datetime.strptime(out[-1]["t"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     if last_start + span > datetime.now(timezone.utc):
         out = out[:-1]
-    return out
+    # Twelve Data includes weekend quotes no broker fills; drop them (the backtest does too)
+    return [c for c in out
+            if market_open(datetime.strptime(c["t"], "%Y-%m-%d %H:%M:%S"))]
 
 def get_4h_trend():
     """Returns 'bull', 'bear', or 'neutral' based on 4H 20/50 EMA alignment."""
     try:
-        candles_4h = fetch_candles(60, interval="4h")
+        candles_4h = fetch_candles(100, interval="4h")[-60:]
         closes_4h = [c["c"] for c in candles_4h]
         e20_4h = calc_ema(closes_4h, 20)
         e50_4h = calc_ema(closes_4h, 50)
@@ -165,7 +173,7 @@ def detect_signal(candles, news_events):
     htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
     stop_dist = abs(cur["c"] - sl)
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
-    lot_size = round(risk_amt / (stop_dist * 100), 2)
+    lot_size = math.floor(risk_amt / (stop_dist * 100) * 100 + 1e-9) / 100  # round down
     lot_size = max(0.01, lot_size)  # minimum 0.01 lots
     return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
             "sl_pts": round(stop_dist, 1), "ema20": ev,
@@ -191,11 +199,10 @@ def track_results(candles_raw, news_events=None):
                 "o": c["o"], "h": c["h"], "l": c["l"], "c": c["c"]} for c in cs]
         return [c for c in out if bt.market_open(c["t"])]
     c1 = conv(candles_raw)
-    c4 = conv(fetch_candles(120, interval="4h"))
-    trades = bt.run(c1, c4, "live", "both", 2.0, None, False)  # every signal, like the live bot
-    # Drop signals the live bot skipped for news, so no result is posted for a trade never sent
-    return [t for t in trades
-            if not is_near_news(t["time"].strftime("%Y-%m-%d %H:%M:%S"), news_events or [])]
+    c4 = conv(fetch_candles(400, interval="4h"))
+    # One position at a time, exactly like the backtest. News-skipped candles never open a trade.
+    skip = lambda t: is_near_news(t.strftime("%Y-%m-%d %H:%M:%S"), news_events or [])
+    return bt.run(c1, c4, "live", "both", 2.0, None, True, include_open=True, skip=skip)
 
 def send_result(t, losses_today):
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
@@ -209,9 +216,9 @@ def send_result(t, losses_today):
            "Losses today: " + str(losses_today) + " of 2")
     send_telegram(msg)
 
-def send_signal(signal, stopped=False):
+def send_signal(signal, skip_reason=None):
     arrow = "\U0001f7e2 \u25b2" if signal["direction"] == "BUY" else "\U0001f534 \u25bc"
-    stop = ("\u26d4 DAILY STOP: 2 losses today. DO NOT TAKE THIS ONE.\n" if stopped else "")
+    stop = ("\u26d4 " + skip_reason + " DO NOT TAKE THIS ONE.\n" if skip_reason else "")
     msg = (stop + arrow + " *XAU/USD " + signal["direction"] + " SETUP*\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
@@ -263,7 +270,7 @@ def send_daily_summary():
 def main():
     now_pht = datetime.now(PHT).strftime("%Y-%m-%d %H:%M PHT")
     print("Scanning XAU/USD 1H " + now_pht)
-    candles_all = fetch_candles(250)
+    candles_all = fetch_candles(1000)  # ~6 weeks, so the trade tracker has a stable history
     candles = candles_all[-120:]  # detection uses the same 120-candle window as before
     latest = candles[-1]["t"]
     print("Fetched " + str(len(candles)) + " candles. Latest: " + latest)
@@ -274,7 +281,10 @@ def main():
     now_utc = datetime.now(timezone.utc)
     latest_dt = datetime.strptime(latest, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
     age_hours = (now_utc - latest_dt).total_seconds() / 3600
-    if age_hours > 2:
+    # count only hours the market was open, so the Sunday reopen does not trigger a warning
+    open_hours = sum(1 for k in range(1, int(age_hours) + 1)
+                     if market_open(latest_dt + timedelta(hours=k)))
+    if open_hours > 2 and market_open(now_utc):
         stale_msg = ("WARNING: Stale candle data\n"
                      "Latest candle is " + str(round(age_hours, 1)) + "h old\n"
                      "`" + latest + " UTC`\n"
@@ -284,15 +294,22 @@ def main():
 
     # Results of earlier signals + daily stop (2 losses in a UTC day)
     losses_today = 0
+    in_trade = None
     try:
-        tracked = [t for t in track_results(candles_all, news_events) if t.get("exit")]
+        tracked = track_results(candles_all, news_events)
         for t in tracked[-3:]:
             print("Tracked: " + t["time"].strftime("%Y-%m-%d %H:%M") + " " + t["dir"] + " " + t["result"] +
-                  " " + str(round(t["r"], 2)) + "R, closed " + t["exit"].strftime("%Y-%m-%d %H:%M"))
-        losses_today = sum(1 for t in tracked if t["exit"].date() == latest_dt.date() and t["r"] < 0)
-        for t in tracked:
+                  " " + str(round(t["r"], 2)) + "R" +
+                  (", closed " + t["exit"].strftime("%Y-%m-%d %H:%M") if t["exit"] else ", still open"))
+        closed = [t for t in tracked if t["exit"]]
+        losses_today = sum(1 for t in closed if t["exit"].date() == latest_dt.date() and t["r"] < 0)
+        for t in closed:
             if t["exit"] == latest_dt:
                 send_result(t, losses_today)
+        # A trade from an earlier candle still running means: no new position
+        still_open = [t for t in tracked if t["exit"] is None and t["time"] < latest_dt]
+        if still_open:
+            in_trade = still_open[-1]
     except Exception as e:
         print("Result tracking failed: " + type(e).__name__ + " " + str(e)[:100])
 
@@ -300,10 +317,18 @@ def main():
     h = utc_hour(latest)
 
     if signal:
-        stopped = losses_today >= 2
-        send_signal(signal, stopped)
-        log_to_sheet(signal)
-        status = "Signal fired (daily stop - skip)" if stopped else "Signal fired!"
+        reason = None
+        if in_trade:
+            reason = ("ALREADY IN A TRADE (" + in_trade["dir"] + " from " +
+                      in_trade["time"].strftime("%H:%M") + " UTC is still open).")
+        elif losses_today >= 2:
+            reason = "DAILY STOP: 2 losses today."
+        send_signal(signal, reason)
+        if not reason:
+            log_to_sheet(signal)  # the sheet only gets trades you should actually take
+        status = "Signal fired (skip)" if reason else "Signal fired!"
+    elif not market_open(now_utc):
+        status = "Market closed (weekend)"
     elif in_session(h):
         status = "In session, no setup"
     else:
