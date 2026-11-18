@@ -41,12 +41,12 @@ def fetch_news_events():
             if not date_str or not time_str or time_str in ("All Day", "Tentative"):
                 continue
             try:
+                # The feed's times are already UTC (checked: US Retail Sales, 8:30 AM New York,
+                # is listed as 1:30pm in November). No daylight-saving conversion needed.
                 naive = datetime.strptime(date_str + " " + time_str, "%m-%d-%Y %I:%M%p")
-                month = naive.month
-                offset = timedelta(hours=-4) if 3 <= month <= 10 else timedelta(hours=-5)
-                dt_utc = naive.replace(tzinfo=timezone(offset)).astimezone(timezone.utc)
+                dt_utc = naive.replace(tzinfo=timezone.utc)
                 events.append(dt_utc)
-                print("News: " + event.findtext("title", "") + " | raw " + date_str + " " + time_str)
+                print("News: " + event.findtext("title", "") + " at " + dt_utc.strftime("%a %H:%M UTC"))
             except Exception:
                 continue
         return events
@@ -182,7 +182,7 @@ def send_telegram(text):
     if not r.ok:
         raise Exception("Telegram send failed: HTTP " + str(r.status_code))
 
-def track_results(candles_raw):
+def track_results(candles_raw, news_events=None):
     """Rebuild recent signals with the backtest engine (same rules, 2R) and resolve them.
     Stateless: every run recomputes the last few days from candle history."""
     import backtest as bt
@@ -192,7 +192,10 @@ def track_results(candles_raw):
         return [c for c in out if bt.market_open(c["t"])]
     c1 = conv(candles_raw)
     c4 = conv(fetch_candles(120, interval="4h"))
-    return bt.run(c1, c4, "live", "both", 2.0, None, False)  # every signal, like the live bot
+    trades = bt.run(c1, c4, "live", "both", 2.0, None, False)  # every signal, like the live bot
+    # Drop signals the live bot skipped for news, so no result is posted for a trade never sent
+    return [t for t in trades
+            if not is_near_news(t["time"].strftime("%Y-%m-%d %H:%M:%S"), news_events or [])]
 
 def send_result(t, losses_today):
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
@@ -282,7 +285,7 @@ def main():
     # Results of earlier signals + daily stop (2 losses in a UTC day)
     losses_today = 0
     try:
-        tracked = [t for t in track_results(candles_all) if t.get("exit")]
+        tracked = [t for t in track_results(candles_all, news_events) if t.get("exit")]
         for t in tracked[-3:]:
             print("Tracked: " + t["time"].strftime("%Y-%m-%d %H:%M") + " " + t["dir"] + " " + t["result"] +
                   " " + str(round(t["r"], 2)) + "R, closed " + t["exit"].strftime("%Y-%m-%d %H:%M"))
