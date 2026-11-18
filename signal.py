@@ -46,6 +46,7 @@ def fetch_news_events():
                 offset = timedelta(hours=-4) if 3 <= month <= 10 else timedelta(hours=-5)
                 dt_utc = naive.replace(tzinfo=timezone(offset)).astimezone(timezone.utc)
                 events.append(dt_utc)
+                print("News: " + event.findtext("title", "") + " | raw " + date_str + " " + time_str)
             except Exception:
                 continue
         return events
