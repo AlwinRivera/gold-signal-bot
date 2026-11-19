@@ -59,7 +59,7 @@ def fetch(interval, pages=1, symbol="XAU/USD"):
         end = out[0]["t"] - timedelta(minutes=1)
         print(symbol + " " + interval + " page " + str(p + 1) + ": back to " + out[0]["t"].strftime("%Y-%m-%d"))
     # drop the still-forming last candle, like the live bot
-    span = timedelta(hours=4) if interval == "4h" else timedelta(hours=1)
+    span = {"4h": timedelta(hours=4), "15min": timedelta(minutes=15)}.get(interval, timedelta(hours=1))
     if out and out[-1]["t"] + span > datetime.now(timezone.utc):
         out = out[:-1]
     return out
