@@ -78,3 +78,23 @@ Rules are frozen exactly as written above. Judged **only on trades from 2026-11-
 
 The research workflow re-runs automatically on the 1st of every month and posts a summary
 to Telegram. First realistic verdict: around February 2027.
+
+## Round 3: day-trading batch (declared 2026-11-19, before testing)
+
+Gold (XAU/USD) only, **15-minute candles**, weekend candles dropped, cost 0.30 per trade.
+Every trade is closed the same day. One position per strategy. If stop and target are hit
+in the same candle, it counts as a loss. Session times follow daylight saving
+(New York = America/New_York, London = Europe/London).
+
+| # | Name | Entry | Stop | Exit |
+|---|---|---|---|---|
+| D1 | NY opening range breakout | Range = high/low of the 9:30-10:00 New York 15M candles. First 15M close outside the range between 10:00 and 12:00 New York | Opposite side of the range | 2R target, or close at 15:45 New York |
+| D2 | Yesterday's high/low fake-out | 07:00-16:00 UTC: a 15M candle trades above yesterday's high but closes back below it (SELL), or below yesterday's low and closes back above it (BUY) | That candle's extreme +/- 0.5 | 2R target, or close at 20:00 UTC |
+| D3 | 15M EMA pullback, 1H trend | Bot's pullback rules on 15M (20/50 EMA, wick within 0.1% of EMA20, close on trend side, body >= 35%), only when the 1H EMA20/50 agree. Candles starting 06:00-09:45 or 12:00-15:45 UTC | EMA20 -/+ 0.7 x candle size | 2R target, or close at 20:00 UTC |
+| D4 | London open momentum | First London hour (08:00-09:00 London) moves at least 1 x ATR(14, 1H). Then the first 15M candle between 09:00 and 11:00 London that dips to the 15M EMA20 and closes back in the move's direction | That candle's low/high -/+ 0.5 | 2R target, or close at 12:00 London |
+
+Minimum risk 2.0 points (smaller setups skipped). D1, D2, D4: at most one trade a day.
+
+**Pass rule (stricter, since more ideas have now been tried):** profit factor at least
+**1.3** in 2024-2025 **and** in 2026, with at least 30 trades in 2026.
+Passing ideas join the monthly forward test; only forward-test passes justify a paid challenge.
