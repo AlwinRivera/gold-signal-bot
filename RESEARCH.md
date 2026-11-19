@@ -98,3 +98,10 @@ Minimum risk 2.0 points (smaller setups skipped). D1, D2, D4: at most one trade 
 **Pass rule (stricter, since more ideas have now been tried):** profit factor at least
 **1.3** in 2024-2025 **and** in 2026, with at least 30 trades in 2026.
 Passing ideas join the monthly forward test; only forward-test passes justify a paid challenge.
+
+## Round 3 result (2026-11-19)
+
+No idea passed. Best: D3 (15M pullback with 1H trend) PF 1.00 before 2026 and 1.07 in 2026;
+D1 (NY opening range) 1.05 and 1.00. D2 and D4 lost money. Note: 15M history reached back to
+Oct 2022, so the "before 2026" sample is Oct 2022 to Dec 2025 (longer than planned; the
+verdict is the same either way). Nothing is added to the forward test.
