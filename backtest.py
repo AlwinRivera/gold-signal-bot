@@ -356,6 +356,8 @@ def main():
     ideas = [("Current bot (EMA pullback 1.5R)", results["live"]),
              ("A: London breakout of Asian range", run_breakout(c1)),
              ("B: EMA pullback, 2R target", run(c1, c4, "live", "both", 2.0)),
+             ("EMA pullback, 2.5R target", run(c1, c4, "live", "both", 2.5)),
+             ("EMA pullback, 3R target", run(c1, c4, "live", "both", 3.0)),
              ("C: EMA pullback, daily trend only", run(c1, c4, "live", "both", 1.5, bias))]
     out.append("## Strategy shootout")
     out.append("")
