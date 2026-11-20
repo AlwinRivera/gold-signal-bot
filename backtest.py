@@ -307,6 +307,48 @@ def fmt_row(name, s, months):
             str(s["streak"]) + " | " + str(round(s["worst_day"], 1)) + "R |")
 
 
+def robustness(c1, c4, split):
+    global SPREAD_PTS
+    o = []
+    o.append("## Robustness check of untested settings (4R, 72h)")
+    o.append("")
+    o.append("Rule decided before running: a setting changes only if the live value is fragile or clearly "
+               "worse than its neighbours in BOTH periods. Live value marked with *.")
+    o.append("")
+    o.append("| Setting | Value | Trades | Per trade | PF before 2026 | PF 2026 | Max DD |")
+    o.append("|---|---|---|---|---|---|---|")
+    live_P = dict(P)
+    sweeps = [("ema_fast", [10, 15, 20, 30]), ("ema_slow", [30, 40, 50, 75, 100]),
+              ("tol", [0.0, 0.0005, 0.001, 0.002, 0.003]), ("body", [0.2, 0.25, 0.35, 0.45, 0.55]),
+              ("sl_mult", [0.4, 0.55, 0.7, 0.85, 1.0]), ("sl_min", [2.0, 3.0, 4.0, 6.0, 8.0]),
+              ("min_risk", [3.0, 4.5, 6.0, 8.0, 10.0]), ("sep", [0.0, 0.0005, 0.001, 0.002, 0.004])]
+    def row(name, val, ts, star):
+        a = stats([t for t in ts if t["time"] < split])
+        b = stats([t for t in ts if t["time"] >= split])
+        al = stats(ts)
+        if not (a and b and al):
+            return "| " + name + " | " + str(val) + star + " | too few | | | | |"
+        return ("| " + name + " | " + str(val) + star + " | " + str(al["n"]) + " | " + str(round(al["exp"], 2)) +
+                "R | " + str(round(a["pf"], 2)) + " | " + str(round(b["pf"], 2)) + " | " + str(round(al["dd"], 1)) + "R |")
+    for key, vals in sweeps:
+        for v in vals:
+            P.update(live_P)
+            P[key] = v
+            o.append(row(key, v, run(c1, c4, "live", "both", 4.0), " *" if v == live_P[key] else ""))
+    P.update(live_P)
+    for ds in [None, 1, 2, 3]:
+        o.append(row("daily stop (losses)", "off" if ds is None else ds,
+                       run(c1, c4, "live", "both", 4.0, daily_stop=ds), " *" if ds == 2 else ""))
+    base_spread = SPREAD_PTS
+    for sp in [0.2, 0.3, 0.5, 0.8, 1.2]:
+        SPREAD_PTS = sp
+        o.append(row("cost per trade ($)", sp, run(c1, c4, "live", "both", 4.0), " *" if sp == base_spread else ""))
+    SPREAD_PTS = base_spread
+    o.append("")
+
+    return o
+
+
 def main():
     global SPREAD_PTS
     pages = int(os.environ.get("PAGES", "4"))
@@ -403,41 +445,21 @@ def main():
                    " | " + str(round(allst["dd"], 1)) + "R | " + str(safe) + "% |")
     out.append("")
 
-    out.append("## Robustness check of untested settings (4R, 72h)")
-    out.append("")
-    out.append("Rule decided before running: a setting changes only if the live value is fragile or clearly "
-               "worse than its neighbours in BOTH periods. Live value marked with *.")
-    out.append("")
-    out.append("| Setting | Value | Trades | Per trade | PF before 2026 | PF 2026 | Max DD |")
-    out.append("|---|---|---|---|---|---|---|")
-    live_P = dict(P)
-    sweeps = [("ema_fast", [10, 15, 20, 30]), ("ema_slow", [30, 40, 50, 75, 100]),
-              ("tol", [0.0, 0.0005, 0.001, 0.002, 0.003]), ("body", [0.2, 0.25, 0.35, 0.45, 0.55]),
-              ("sl_mult", [0.4, 0.55, 0.7, 0.85, 1.0]), ("sl_min", [2.0, 3.0, 4.0, 6.0, 8.0]),
-              ("min_risk", [3.0, 4.5, 6.0, 8.0, 10.0]), ("sep", [0.0, 0.0005, 0.001, 0.002, 0.004])]
-    def row(name, val, ts, star):
-        a = stats([t for t in ts if t["time"] < split])
-        b = stats([t for t in ts if t["time"] >= split])
-        al = stats(ts)
-        if not (a and b and al):
-            return "| " + name + " | " + str(val) + star + " | too few | | | | |"
-        return ("| " + name + " | " + str(val) + star + " | " + str(al["n"]) + " | " + str(round(al["exp"], 2)) +
-                "R | " + str(round(a["pf"], 2)) + " | " + str(round(b["pf"], 2)) + " | " + str(round(al["dd"], 1)) + "R |")
-    for key, vals in sweeps:
-        for v in vals:
-            P.update(live_P)
-            P[key] = v
-            out.append(row(key, v, run(c1, c4, "live", "both", 4.0), " *" if v == live_P[key] else ""))
-    P.update(live_P)
-    for ds in [None, 1, 2, 3]:
-        out.append(row("daily stop (losses)", "off" if ds is None else ds,
-                       run(c1, c4, "live", "both", 4.0, daily_stop=ds), " *" if ds == 2 else ""))
-    base_spread = SPREAD_PTS
-    for sp in [0.2, 0.3, 0.5, 0.8, 1.2]:
-        SPREAD_PTS = sp
-        out.append(row("cost per trade ($)", sp, run(c1, c4, "live", "both", 4.0), " *" if sp == base_spread else ""))
-    SPREAD_PTS = base_spread
-    out.append("")
+    # Stop sizes of the live 4R strategy (for small-account lot sizing)
+    t4 = run(c1, c4, "live", "both", 4.0)
+    rk = sorted(t["risk_pts"] for t in t4)
+    if rk:
+        out.append("## Stop distance, live 4R strategy")
+        out.append("")
+        out.append("Median $" + str(round(rk[len(rk) // 2], 1)) + ", 90th percentile $" +
+                   str(round(rk[int(len(rk) * 0.9)], 1)) + ", max $" + str(round(rk[-1], 1)) + ".")
+        for cap in (20, 40, 50, 80):
+            out.append("- Stop above $" + str(cap) + ": " + str(sum(1 for x in rk if x > cap)) + " of " +
+                       str(len(rk)) + " trades (" + str(round(sum(1 for x in rk if x > cap) / len(rk) * 100)) + "%)")
+        out.append("")
+
+    if os.environ.get("ROBUST") == "1":
+        out += robustness(c1, c4, split)
 
     out.append("## Time limit check (4R target)")
     out.append("")
