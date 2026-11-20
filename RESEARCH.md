@@ -142,3 +142,11 @@ Result: **no setting changes.** All 48 variations were profitable in both period
 No live value was fragile or clearly beaten in both periods. The 2-loss daily stop is neutral to
 slightly positive (+0.29R vs +0.28R per trade). Costs up to $1.20 per trade still leave PF 1.27/1.33.
 The news filter cannot be backtested (no historical feed).
+
+## FTMO odds by target (2026-11-20)
+
+Simulated funding odds at 0.6% risk for 3R-10R, with the full and with half the backtest edge.
+4R through 10R all land at 77-85% eventual funding (52-59% with half the edge); 3R is lower
+(80% / 58%, slower). 6R scored best on 12-month odds (62% vs 54% for 4R) but 5R, between them,
+scored worse than both, so the differences inside 4R-10R look like noise. 6R also relies more on
+time-limit exits. **4R stays**: same eventual odds, more consistent, fewer trades closed by time.
