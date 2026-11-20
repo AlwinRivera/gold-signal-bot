@@ -124,3 +124,9 @@ was profitable across the whole 4R-10R range in both periods. The bot moves to *
 consistent value, chosen from the low end of a range that worked, not the single best result.
 The forward-test candidate added this morning is changed from 3R to **4R**, judged on trades
 from 2026-11-20 onward. Funded FTMO accounts need the **Swing** type to hold over weekends.
+
+## Time limit check (2026-11-20)
+
+The 72-market-hour limit was a default, never tested. Checked 24-120 hours at 4R: every limit
+from 48 to 120 hours gave +0.28R to +0.31R per trade and PF 1.37-1.47 in both periods; 24 hours
+was a little lower (+0.20R). 72 is not a fragile setting, so it stays.
