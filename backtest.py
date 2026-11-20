@@ -482,6 +482,36 @@ def main():
           out.append("| " + str(risk) + "% | " + pc(w6) + " | " + pc(w12) + " | " + pc(ok) + " | " + pc(fail) + " | " + med + " |")
       out.append("")
 
+    # FTMO odds by target at 0.6% risk (full and half edge)
+    out.append("## FTMO odds by target, 0.6% risk (5,000 simulated challenges per row)")
+    out.append("")
+    out.append("| Target | Trades | Win rate | Funded within 12 months (full / half edge) | Funded eventually (full / half) | Failed (full / half) |")
+    out.append("|---|---|---|---|---|---|")
+    for rr in [3.0, 4.0, 5.0, 6.0, 8.0, 10.0]:
+        tt = run(c1, c4, "live", "both", rr)
+        res = []
+        for haircut in (0.0, 0.5):
+            cut = haircut * sum(t["r"] for t in tt) / len(tt)
+            wk_ = _rs.weeks_of_daily_r([dict(t, r=t["r"] - cut) for t in tt])
+            rng = _rnd.Random(11)
+            n, w12, ok, fail = 5000, 0, 0, 0
+            for _ in range(n):
+                r1, a1 = _rs.ftmo_phase(wk_, 0.6, 10.0, rng, 260)
+                if r1 != "pass":
+                    fail += r1 == "fail"
+                    continue
+                r2, a2 = _rs.ftmo_phase(wk_, 0.6, 5.0, rng, 260)
+                if r2 != "pass":
+                    fail += r2 == "fail"
+                    continue
+                ok += 1
+                w12 += a1 + a2 <= 52
+            res.append((w12 / n * 100, ok / n * 100, fail / n * 100))
+        wr = sum(1 for t in tt if t["r"] > 0) / len(tt) * 100
+        f = lambda i: str(round(res[0][i])) + "% / " + str(round(res[1][i])) + "%"
+        out.append("| " + str(int(rr)) + "R | " + str(len(tt)) + " | " + str(round(wr)) + "% | " + f(0) + " | " + f(1) + " | " + f(2) + " |")
+    out.append("")
+
     # Stop sizes of the live 4R strategy (for small-account lot sizing)
     t4 = run(c1, c4, "live", "both", 4.0)
     rk = sorted(t["risk_pts"] for t in t4)
