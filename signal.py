@@ -175,10 +175,11 @@ def detect_signal(candles, news_events):
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
     lot_size = math.floor(risk_amt / (stop_dist * 100) * 100 + 1e-9) / 100  # round down
     lot_size = max(0.01, lot_size)  # minimum 0.01 lots
+    real_risk = lot_size * 100 * stop_dist  # can exceed risk_amt when the stop is wide
     return {"direction": direction, "entry": cur["c"], "sl": sl, "tp": tp,
             "sl_pts": round(stop_dist, 1), "ema20": ev,
             "time": cur["t"], "trend": trend_label, "htf": htf_label,
-            "lot_size": lot_size, "risk_amt": round(risk_amt, 2)}
+            "lot_size": lot_size, "risk_amt": round(risk_amt, 2), "real_risk": round(real_risk, 2)}
 
 def send_telegram(text):
     api = "https://api.telegram.org/bot" + TG_TOKEN + "/sendMessage"
@@ -236,7 +237,10 @@ def send_signal(signal, skip_reason=None):
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
            "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (4R, hold up to 3 days)\n"
            "\u23f1 Close by: " + close_by(signal["time"]).strftime("%a %d %b, %I:%M %p") + " PHT if SL/TP not hit\n"
-           "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n"
+           "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n" +
+           ("Note: wide stop. 0.01 lots is the smallest size, so this trade risks about $" +
+            f"{signal['real_risk']:.0f}" + " (" + f"{signal['real_risk'] / ACCOUNT_SIZE * 100:.2f}" + "% of the account).\n"
+            if signal["real_risk"] > signal["risk_amt"] * 1.05 else "") +
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
            "\U0001f4c8 Trend:  " + signal["trend"] + "\n"
