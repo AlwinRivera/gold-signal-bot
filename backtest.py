@@ -358,6 +358,13 @@ def main():
              ("B: EMA pullback, 2R target", run(c1, c4, "live", "both", 2.0)),
              ("EMA pullback, 2.5R target", run(c1, c4, "live", "both", 2.5)),
              ("EMA pullback, 3R target", run(c1, c4, "live", "both", 3.0)),
+             ("EMA pullback, 4R target", run(c1, c4, "live", "both", 4.0)),
+             ("EMA pullback, 5R target", run(c1, c4, "live", "both", 5.0)),
+             ("EMA pullback, 6R target", run(c1, c4, "live", "both", 6.0)),
+             ("EMA pullback, 7R target", run(c1, c4, "live", "both", 7.0)),
+             ("EMA pullback, 8R target", run(c1, c4, "live", "both", 8.0)),
+             ("EMA pullback, 9R target", run(c1, c4, "live", "both", 9.0)),
+             ("EMA pullback, 10R target", run(c1, c4, "live", "both", 10.0)),
              ("C: EMA pullback, daily trend only", run(c1, c4, "live", "both", 1.5, bias))]
     out.append("## Strategy shootout")
     out.append("")
