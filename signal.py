@@ -206,7 +206,7 @@ def track_results(candles_raw, news_events=None):
 
 def send_result(t, losses_today):
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
-    head = {"WIN": "\u2705 WIN", "LOSS": "\u274c LOSS"}.get(t["result"], "\u23f1 CLOSED (time limit)")
+    head = {"WIN": "\u2705 WIN", "LOSS": "\u274c LOSS"}.get(t["result"], "\u23f1 TIME LIMIT: CLOSE THIS TRADE NOW")
     usd = t["r"] * risk_amt
     msg = (head + " - XAU/USD " + t["dir"] + "\n"
            "Signal candle: " + t["time"].strftime("%Y-%m-%d %H:%M") + " UTC\n"
@@ -216,6 +216,17 @@ def send_result(t, losses_today):
            "Losses today: " + str(losses_today) + " of 2")
     send_telegram(msg)
 
+def close_by(candle_time_str, bars=72):
+    """Time limit used in the backtest: 72 market-open hourly candles after entry.
+    Returns the PHT time when the trade should be closed if neither SL nor TP was hit."""
+    t = datetime.strptime(candle_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+    n = 0
+    while n < bars:
+        t += timedelta(hours=1)
+        if market_open(t):
+            n += 1
+    return (t + timedelta(hours=1)).astimezone(PHT)
+
 def send_signal(signal, skip_reason=None):
     arrow = "\U0001f7e2 \u25b2" if signal["direction"] == "BUY" else "\U0001f534 \u25bc"
     stop = ("\u26d4 " + skip_reason + " DO NOT TAKE THIS ONE.\n" if skip_reason else "")
@@ -224,6 +235,7 @@ def send_signal(signal, skip_reason=None):
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
            "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (4R, hold up to 3 days)\n"
+           "\u23f1 Close by: " + close_by(signal["time"]).strftime("%a %d %b, %I:%M %p") + " PHT if SL/TP not hit\n"
            "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"
