@@ -130,3 +130,15 @@ from 2026-11-20 onward. Funded FTMO accounts need the **Swing** type to hold ove
 The 72-market-hour limit was a default, never tested. Checked 24-120 hours at 4R: every limit
 from 48 to 120 hours gave +0.28R to +0.31R per trade and PF 1.37-1.47 in both periods; 24 hours
 was a little lower (+0.20R). 72 is not a fragile setting, so it stays.
+
+## Robustness check of every untested setting (2026-11-20)
+
+At 4R / 72h, each previously untested setting was varied one at a time (EMA lengths, touch
+tolerance, body filter, stop multiplier, stop minimum, minimum risk, 4H separation, daily stop,
+cost per trade). Rule set before running: change only if the live value is fragile or clearly
+worse than its neighbours in both periods.
+
+Result: **no setting changes.** All 48 variations were profitable in both periods (lowest PF 1.10).
+No live value was fragile or clearly beaten in both periods. The 2-loss daily stop is neutral to
+slightly positive (+0.29R vs +0.28R per trade). Costs up to $1.20 per trade still leave PF 1.27/1.33.
+The news filter cannot be backtested (no historical feed).
