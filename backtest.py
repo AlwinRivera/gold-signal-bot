@@ -449,36 +449,38 @@ def main():
     import random as _rnd
     import research as _rs
     t4 = run(c1, c4, "live", "both", 4.0)
-    weeks = _rs.weeks_of_daily_r(t4)
-    out.append("## FTMO odds, live 4R strategy (5,000 simulated challenges per row)")
-    out.append("")
-    out.append("Re-shuffles real weeks of backtest results. Max loss 10%, daily loss 5%, Phase 1 +10%, "
-               "Phase 2 +5%. Backtest edge assumed real (live results are usually worse).")
-    out.append("")
-    out.append("| Risk per trade | Funded within 6 months | Funded within 12 months | Funded eventually | Failed | Median months to funded |")
-    out.append("|---|---|---|---|---|---|")
-    for risk in [0.4, 0.5, 0.6, 0.8, 1.0, 1.25]:
-        rng = _rnd.Random(11)
-        n, w6, w12, ok, fail, dur = 5000, 0, 0, 0, 0, []
-        for _ in range(n):
-            r1, a1 = _rs.ftmo_phase(weeks, risk, 10.0, rng, 260)
-            if r1 != "pass":
-                fail += r1 == "fail"
-                continue
-            r2, a2 = _rs.ftmo_phase(weeks, risk, 5.0, rng, 260)
-            if r2 != "pass":
-                fail += r2 == "fail"
-                continue
-            ok += 1
-            wk = a1 + a2
-            dur.append(wk)
-            w6 += wk <= 26
-            w12 += wk <= 52
-        dur.sort()
-        med = str(round(dur[len(dur) // 2] / 4.33, 1)) if dur else "-"
-        pc = lambda x: str(round(x / n * 100)) + "%"
-        out.append("| " + str(risk) + "% | " + pc(w6) + " | " + pc(w12) + " | " + pc(ok) + " | " + pc(fail) + " | " + med + " |")
-    out.append("")
+    for edge_label, haircut in [("full backtest edge", 0.0), ("HALF the backtest edge", 0.5)]:
+      cut = haircut * sum(t["r"] for t in t4) / len(t4)
+      weeks = _rs.weeks_of_daily_r([dict(t, r=t["r"] - cut) for t in t4])
+      out.append("## FTMO odds, live 4R strategy, " + edge_label + " (5,000 simulated challenges per row)")
+      out.append("")
+      out.append("Re-shuffles real weeks of backtest results. Max loss 10%, daily loss 5%, Phase 1 +10%, "
+                 "Phase 2 +5%. Backtest edge assumed real (live results are usually worse).")
+      out.append("")
+      out.append("| Risk per trade | Funded within 6 months | Funded within 12 months | Funded eventually | Failed | Median months to funded |")
+      out.append("|---|---|---|---|---|---|")
+      for risk in [0.4, 0.5, 0.6, 0.8, 1.0, 1.25]:
+          rng = _rnd.Random(11)
+          n, w6, w12, ok, fail, dur = 5000, 0, 0, 0, 0, []
+          for _ in range(n):
+              r1, a1 = _rs.ftmo_phase(weeks, risk, 10.0, rng, 260)
+              if r1 != "pass":
+                  fail += r1 == "fail"
+                  continue
+              r2, a2 = _rs.ftmo_phase(weeks, risk, 5.0, rng, 260)
+              if r2 != "pass":
+                  fail += r2 == "fail"
+                  continue
+              ok += 1
+              wk = a1 + a2
+              dur.append(wk)
+              w6 += wk <= 26
+              w12 += wk <= 52
+          dur.sort()
+          med = str(round(dur[len(dur) // 2] / 4.33, 1)) if dur else "-"
+          pc = lambda x: str(round(x / n * 100)) + "%"
+          out.append("| " + str(risk) + "% | " + pc(w6) + " | " + pc(w12) + " | " + pc(ok) + " | " + pc(fail) + " | " + med + " |")
+      out.append("")
 
     # Stop sizes of the live 4R strategy (for small-account lot sizing)
     t4 = run(c1, c4, "live", "both", 4.0)
