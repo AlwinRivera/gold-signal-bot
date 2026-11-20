@@ -172,7 +172,7 @@ def resolve(sig, future):
 
 
 def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True,
-        include_open=False, skip=None):
+        include_open=False, skip=None, flat_hour=None):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
@@ -184,6 +184,8 @@ def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=Tru
         sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
             continue
+        if flat_hour is not None:  # day trading: close at flat_hour UTC the same day
+            sig["max_bars"] = max(1, flat_hour - (window[-1]["t"].hour + 1))
         res, r, bars, exit_t = resolve(sig, c1[i + 1:])
         if res == "OPEN":
             if include_open:
@@ -385,6 +387,24 @@ def main():
                    "% | " + str(round(a["net"], 1)) + "R | " + str(round(a["pf"], 2)) + " | " + str(b["n"]) + " | " +
                    str(round(b["wr"], 1)) + "% | " + str(round(b["net"], 1)) + "R | " + str(round(b["pf"], 2)) +
                    " | " + str(round(allst["dd"], 1)) + "R | " + str(safe) + "% |")
+    out.append("")
+
+    out.append("## Target size: how trades end")
+    out.append("")
+    out.append("| Version | Trades | Hit target | Hit stop | Closed by time | Net (all) | PF before 2026 | PF 2026 |")
+    out.append("|---|---|---|---|---|---|---|---|")
+    for rr in [2.0, 3.0, 4.0, 6.0, 8.0, 10.0]:
+        for label, fh in [("hold up to 3 days", None), ("day trade, flat 20:00 UTC", 20)]:
+            ts = run(c1, c4, "live", "both", rr, None, True, flat_hour=fh)
+            if not ts:
+                continue
+            n = len(ts)
+            pct = lambda k: str(round(sum(1 for t in ts if t["result"] == k) / n * 100)) + "%"
+            a = stats([t for t in ts if t["time"] < split])
+            b = stats([t for t in ts if t["time"] >= split])
+            out.append("| " + str(int(rr)) + "R, " + label + " | " + str(n) + " | " + pct("WIN") + " | " + pct("LOSS") +
+                       " | " + pct("TIMEOUT") + " | " + str(round(sum(t["r"] for t in ts), 1)) + "R | " +
+                       (str(round(a["pf"], 2)) if a else "-") + " | " + (str(round(b["pf"], 2)) if b else "-") + " |")
     out.append("")
 
     live = results["live"]
