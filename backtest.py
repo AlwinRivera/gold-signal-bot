@@ -102,11 +102,16 @@ def htf_trend(c4, as_of, sep_min):
     return "bull" if a > b else ("bear" if a < b else "neutral")
 
 
+# Strategy settings (live bot values). The robustness check changes one at a time.
+P = {"ema_fast": 20, "ema_slow": 50, "tol": 0.001, "body": 0.35, "sl_mult": 0.7,
+     "sl_min": 4.0, "min_risk": 6.0, "sep": 0.001}
+
+
 def detect(window, htf_mode, c4, sessions="both", rr=1.5, daily=None):
     """Mirror of signal.py detect_signal on a 120-candle window (news filter excluded)."""
     closes = [c["c"] for c in window]
-    e20 = calc_ema(closes, 20)
-    e50 = calc_ema(closes, 50)
+    e20 = calc_ema(closes, P["ema_fast"])
+    e50 = calc_ema(closes, P["ema_slow"])
     cur = window[-1]
     ev, e5 = e20[-1], e50[-1]
     if ev is None or e5 is None:
@@ -116,7 +121,7 @@ def detect(window, htf_mode, c4, sessions="both", rr=1.5, daily=None):
     bull, bear = ev > e5, ev < e5
 
     if htf_mode != "off":
-        sep = 0.001 if htf_mode == "live" else 0.0
+        sep = P["sep"] if htf_mode == "live" else 0.0
         trend = htf_trend(c4, cur["t"] + timedelta(hours=1), sep)
         if trend == "bear" and bull:
             return None
@@ -129,9 +134,9 @@ def detect(window, htf_mode, c4, sessions="both", rr=1.5, daily=None):
         return None
     size = cur["h"] - cur["l"]
     body = abs(cur["c"] - cur["o"])
-    if size < 2 or body / size < 0.35:
+    if size < 2 or body / size < P["body"]:
         return None
-    tol = ev * 0.001
+    tol = ev * P["tol"]
     d = None
     if bull and cur["l"] <= ev + tol and cur["c"] > ev and cur["c"] > cur["o"]:
         d = "BUY"
@@ -143,9 +148,9 @@ def detect(window, htf_mode, c4, sessions="both", rr=1.5, daily=None):
         want = "BUY" if daily.get(cur["t"].date()) == "bull" else ("SELL" if daily.get(cur["t"].date()) == "bear" else None)
         if d != want:
             return None
-    buf = max(size * 0.7, 4.0)
+    buf = max(size * P["sl_mult"], P["sl_min"])
     sl = ev - buf if d == "BUY" else ev + buf
-    if abs(cur["c"] - sl) < 6.0:
+    if abs(cur["c"] - sl) < P["min_risk"]:
         return None
     r1 = abs(cur["c"] - sl)
     tp = cur["c"] + rr * r1 if d == "BUY" else cur["c"] - rr * r1
@@ -172,7 +177,7 @@ def resolve(sig, future):
 
 
 def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True,
-        include_open=False, skip=None, flat_hour=None, max_bars=None):
+        include_open=False, skip=None, flat_hour=None, max_bars=None, daily_stop=None):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
@@ -181,6 +186,12 @@ def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=Tru
             continue  # one position at a time
         if skip is not None and skip(window[-1]["t"]):
             continue
+        if daily_stop is not None:
+            entry_t = window[-1]["t"] + timedelta(hours=1)
+            lost = sum(1 for t in trades if t["exit"] is not None and t["r"] < 0
+                       and t["exit"].date() == entry_t.date() and t["exit"] + timedelta(hours=1) <= entry_t)
+            if lost >= daily_stop:
+                continue
         sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
             continue
@@ -297,6 +308,7 @@ def fmt_row(name, s, months):
 
 
 def main():
+    global SPREAD_PTS
     pages = int(os.environ.get("PAGES", "4"))
     c1 = fetch("1h", pages)
     c4 = fetch("4h", max(1, pages // 3))
@@ -389,6 +401,42 @@ def main():
                    "% | " + str(round(a["net"], 1)) + "R | " + str(round(a["pf"], 2)) + " | " + str(b["n"]) + " | " +
                    str(round(b["wr"], 1)) + "% | " + str(round(b["net"], 1)) + "R | " + str(round(b["pf"], 2)) +
                    " | " + str(round(allst["dd"], 1)) + "R | " + str(safe) + "% |")
+    out.append("")
+
+    out.append("## Robustness check of untested settings (4R, 72h)")
+    out.append("")
+    out.append("Rule decided before running: a setting changes only if the live value is fragile or clearly "
+               "worse than its neighbours in BOTH periods. Live value marked with *.")
+    out.append("")
+    out.append("| Setting | Value | Trades | Per trade | PF before 2026 | PF 2026 | Max DD |")
+    out.append("|---|---|---|---|---|---|---|")
+    live_P = dict(P)
+    sweeps = [("ema_fast", [10, 15, 20, 30]), ("ema_slow", [30, 40, 50, 75, 100]),
+              ("tol", [0.0, 0.0005, 0.001, 0.002, 0.003]), ("body", [0.2, 0.25, 0.35, 0.45, 0.55]),
+              ("sl_mult", [0.4, 0.55, 0.7, 0.85, 1.0]), ("sl_min", [2.0, 3.0, 4.0, 6.0, 8.0]),
+              ("min_risk", [3.0, 4.5, 6.0, 8.0, 10.0]), ("sep", [0.0, 0.0005, 0.001, 0.002, 0.004])]
+    def row(name, val, ts, star):
+        a = stats([t for t in ts if t["time"] < split])
+        b = stats([t for t in ts if t["time"] >= split])
+        al = stats(ts)
+        if not (a and b and al):
+            return "| " + name + " | " + str(val) + star + " | too few | | | | |"
+        return ("| " + name + " | " + str(val) + star + " | " + str(al["n"]) + " | " + str(round(al["exp"], 2)) +
+                "R | " + str(round(a["pf"], 2)) + " | " + str(round(b["pf"], 2)) + " | " + str(round(al["dd"], 1)) + "R |")
+    for key, vals in sweeps:
+        for v in vals:
+            P.update(live_P)
+            P[key] = v
+            out.append(row(key, v, run(c1, c4, "live", "both", 4.0), " *" if v == live_P[key] else ""))
+    P.update(live_P)
+    for ds in [None, 1, 2, 3]:
+        out.append(row("daily stop (losses)", "off" if ds is None else ds,
+                       run(c1, c4, "live", "both", 4.0, daily_stop=ds), " *" if ds == 2 else ""))
+    base_spread = SPREAD_PTS
+    for sp in [0.2, 0.3, 0.5, 0.8, 1.2]:
+        SPREAD_PTS = sp
+        out.append(row("cost per trade ($)", sp, run(c1, c4, "live", "both", 4.0), " *" if sp == base_spread else ""))
+    SPREAD_PTS = base_spread
     out.append("")
 
     out.append("## Time limit check (4R target)")
