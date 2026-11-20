@@ -172,7 +172,7 @@ def resolve(sig, future):
 
 
 def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=True,
-        include_open=False, skip=None, flat_hour=None):
+        include_open=False, skip=None, flat_hour=None, max_bars=None):
     trades = []
     busy_until = None
     for i in range(120, len(c1)):
@@ -184,6 +184,8 @@ def run(c1, c4, htf_mode, sessions="both", rr=1.5, daily=None, one_at_a_time=Tru
         sig = detect(window, htf_mode, c4, sessions, rr, daily)
         if not sig:
             continue
+        if max_bars is not None:
+            sig["max_bars"] = max_bars
         if flat_hour is not None:  # day trading: close at flat_hour UTC the same day
             sig["max_bars"] = max(1, flat_hour - (window[-1]["t"].hour + 1))
         res, r, bars, exit_t = resolve(sig, c1[i + 1:])
@@ -389,6 +391,22 @@ def main():
                    " | " + str(round(allst["dd"], 1)) + "R | " + str(safe) + "% |")
     out.append("")
 
+    out.append("## Time limit check (4R target)")
+    out.append("")
+    out.append("| Time limit | Trades | Closed by time | Net | Per trade | PF before 2026 | PF 2026 | Max DD |")
+    out.append("|---|---|---|---|---|---|---|---|")
+    for mb in [24, 48, 72, 96, 120]:
+        ts = run(c1, c4, "live", "both", 4.0, None, True, max_bars=mb)
+        a = stats([t for t in ts if t["time"] < split])
+        b = stats([t for t in ts if t["time"] >= split])
+        al = stats(ts)
+        if not (a and b and al):
+            continue
+        tpct = str(round(sum(1 for t in ts if t["result"] == "TIMEOUT") / len(ts) * 100)) + "%"
+        out.append("| " + str(mb) + " market hours (~" + str(round(mb / 24, 1)) + " days) | " + str(al["n"]) + " | " +
+                   tpct + " | " + str(round(al["net"], 1)) + "R | " + str(round(al["exp"], 2)) + "R | " +
+                   str(round(a["pf"], 2)) + " | " + str(round(b["pf"], 2)) + " | " + str(round(al["dd"], 1)) + "R |")
+    out.append("")
     out.append("## Target size: how trades end")
     out.append("")
     out.append("| Version | Trades | Hit target | Hit stop | Closed by time | Net (all) | PF before 2026 | PF 2026 |")
