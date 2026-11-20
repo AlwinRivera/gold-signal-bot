@@ -17,7 +17,7 @@ import backtest as bt
 MARKETS = [("XAU/USD", 0.30), ("EUR/USD", 0.00012), ("USD/JPY", 0.015)]
 SPLIT = datetime(2026, 1, 1, tzinfo=timezone.utc)
 FRESH = datetime(2026, 11, 17, tzinfo=timezone.utc)  # Round 2: only data after this counts
-ROUND2 = [("S1 EMA pullback (bot)", "XAU/USD"), ("S2 Prev-day breakout", "USD/JPY"),
+ROUND2 = [("S1 EMA pullback (bot)", "XAU/USD"), ("S1 EMA pullback 3R (bot from 20 Nov)", "XAU/USD"), ("S2 Prev-day breakout", "USD/JPY"),
           ("S2 Prev-day breakout", "XAU/USD"), ("S4 RSI(2) dip, daily trend", "XAU/USD")]
 PAGES = int(os.environ.get("PAGES", "4"))
 SIMS = int(os.environ.get("SIMS", "3000"))
@@ -338,6 +338,10 @@ def main():
             time.sleep(10)
             c4 = [c for c in bt.fetch("4h", 1, sym) if bt.market_open(c["t"])]
             s1 = bt.run(c1, c4, "live", "both", 2.0)
+            s1b = bt.run(c1, c4, "live", "both", 3.0)
+            results[("S1 EMA pullback 3R (bot from 20 Nov)", sym)] = [
+                {"time": t["time"], "exit": t["time"], "dir": t["dir"], "r": t["r"], "result": t["result"]}
+                for t in s1b]
             results[("S1 EMA pullback (bot)", sym)] = [
                 {"time": t["time"], "exit": t["time"], "dir": t["dir"], "r": t["r"], "result": t["result"]}
                 for t in s1]
@@ -436,7 +440,8 @@ def main():
     tg = ["XAUPullbackBot monthly research check", "Fresh data since " + FRESH.strftime("%d %b %Y"), ""]
     passed = []
     for m in ROUND2:
-        st = bt.stats([t for t in results.get(m, []) if t["time"] >= FRESH])
+        start = datetime(2026, 11, 20, tzinfo=timezone.utc) if "3R" in m[0] else FRESH
+        st = bt.stats([t for t in results.get(m, []) if t["time"] >= start])
         label = m[0] + " " + m[1]
         if not st:
             out.append("| " + label + " | 0 | - | - | - | waiting |")

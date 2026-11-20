@@ -168,7 +168,7 @@ def detect_signal(candles, news_events):
     if abs(cur["c"] - sl) < 6.0:
         return None
     r1 = abs(cur["c"] - sl)
-    tp = cur["c"] + r1 * 2.0 if direction == "BUY" else cur["c"] - r1 * 2.0
+    tp = cur["c"] + r1 * 3.0 if direction == "BUY" else cur["c"] - r1 * 3.0
     trend_label = "20 EMA > 50 EMA (uptrend)" if bull_trend else "20 EMA < 50 EMA (downtrend)"
     htf_label = "4H " + htf_trend.upper() if htf_trend != "neutral" else "4H neutral"
     stop_dist = abs(cur["c"] - sl)
@@ -191,7 +191,7 @@ def send_telegram(text):
         raise Exception("Telegram send failed: HTTP " + str(r.status_code))
 
 def track_results(candles_raw, news_events=None):
-    """Rebuild recent signals with the backtest engine (same rules, 2R) and resolve them.
+    """Rebuild recent signals with the backtest engine (same rules, 3R) and resolve them.
     Stateless: every run recomputes the last few days from candle history."""
     import backtest as bt
     def conv(cs):
@@ -202,7 +202,7 @@ def track_results(candles_raw, news_events=None):
     c4 = conv(fetch_candles(400, interval="4h"))
     # One position at a time, exactly like the backtest. News-skipped candles never open a trade.
     skip = lambda t: is_near_news(t.strftime("%Y-%m-%d %H:%M:%S"), news_events or [])
-    return bt.run(c1, c4, "live", "both", 2.0, None, True, include_open=True, skip=skip)
+    return bt.run(c1, c4, "live", "both", 3.0, None, True, include_open=True, skip=skip)
 
 def send_result(t, losses_today):
     risk_amt = ACCOUNT_SIZE * (RISK_PCT / 100)
@@ -223,7 +223,7 @@ def send_signal(signal, skip_reason=None):
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4cd Entry:  `" + f"{signal['entry']:.2f}" + "`\n"
            "\U0001f6d1 Stop:   `" + f"{signal['sl']:.2f}" + "` (" + str(signal["sl_pts"]) + " pts)\n"
-           "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (2R)\n"
+           "\U0001f3af TP:     `" + f"{signal['tp']:.2f}" + "` (3R)\n"
            "💰 Size:   `" + str(signal["lot_size"]) + " lots` ($" + str(signal["risk_amt"]) + " risk)\n"
            "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n"
            "\U0001f4ca 20 EMA: `" + f"{signal['ema20']:.2f}" + "`\n"

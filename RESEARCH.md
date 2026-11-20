@@ -105,3 +105,12 @@ No idea passed. Best: D3 (15M pullback with 1H trend) PF 1.00 before 2026 and 1.
 D1 (NY opening range) 1.05 and 1.00. D2 and D4 lost money. Note: 15M history reached back to
 Oct 2022, so the "before 2026" sample is Oct 2022 to Dec 2025 (longer than planned; the
 verdict is the same either way). Nothing is added to the forward test.
+
+## Target check (2026-11-20)
+
+Tested 2.5R and 3R targets on the bot's unchanged entries. Profit factor rose steadily with the
+target in both periods (3R: 1.18 before 2026, 1.50 in 2026; +0.19R per trade vs +0.11R at 2R;
+max drawdown -21.5R vs -17.8R). The live bot moves to 3R. Because the target was picked from four
+tested values, **"S1 EMA pullback 3R" is added to the Round 2 forward test**, judged only on trades
+from 2026-11-20 onward, same pass rule (25+ trades, PF 1.2+). Suggested risk 0.4% per trade so the
+backtest's worst drawdown stays under FTMO's 10% limit.
