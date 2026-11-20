@@ -114,3 +114,13 @@ max drawdown -21.5R vs -17.8R). The live bot moves to 3R. Because the target was
 tested values, **"S1 EMA pullback 3R" is added to the Round 2 forward test**, judged only on trades
 from 2026-11-20 onward, same pass rule (25+ trades, PF 1.2+). Suggested risk 0.4% per trade so the
 backtest's worst drawdown stays under FTMO's 10% limit.
+
+## Target exploration (2026-11-20, later the same day)
+
+Tested 4R-10R. Bigger targets earned more only because winners were held up to the 72-bar
+(3 trading day) limit; with a same-day exit every target landed near PF 1.17. Holding 1-3 days
+was profitable across the whole 4R-10R range in both periods. The bot moves to **4R, hold up to
+3 days** (PF 1.40 before 2026 and 1.40 in 2026, +0.28R per trade, max drawdown -22.4R): the most
+consistent value, chosen from the low end of a range that worked, not the single best result.
+The forward-test candidate added this morning is changed from 3R to **4R**, judged on trades
+from 2026-11-20 onward. Funded FTMO accounts need the **Swing** type to hold over weekends.
